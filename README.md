@@ -1,4 +1,10 @@
 # UAssetAPI
+
+> **This fork is developed with AI assistance.** It is tooling for reading Unreal Engine 5.8 editor assets offline,
+> built on [BitMechanic's fork](https://github.com/BitMechanic/UAssetAPI) of
+> [atenfyr/UAssetAPI](https://github.com/atenfyr/UAssetAPI) and upstream
+> [pull request 157](https://github.com/atenfyr/UAssetAPI/pull/157). It comes with no warranty of any kind; see the
+> licence. Changes here are not submitted upstream.
 [![CI Status](https://img.shields.io/github/actions/workflow/status/atenfyr/UAssetAPI/build.yml?label=CI)](https://github.com/atenfyr/UAssetAPI/actions)
 [![Issues](https://img.shields.io/github/issues/atenfyr/UAssetAPI.svg?style=flat-square)](https://github.com/atenfyr/UAssetAPI/issues)
 [![License](https://img.shields.io/github/license/atenfyr/UAssetAPI.svg?style=flat-square)](https://github.com/atenfyr/UAssetAPI/blob/master/LICENSE.md)
