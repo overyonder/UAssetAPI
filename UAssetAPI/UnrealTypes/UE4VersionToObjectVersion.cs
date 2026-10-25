@@ -44,7 +44,7 @@ namespace UAssetAPI.UnrealTypes
 
     public enum UE5VersionToObjectVersion
     {
-        VER_UE5_0_EA = 1002,
+        VER_UE5_0EA = 1002,
         VER_UE5_0 = 1004,
         VER_UE5_1 = 1008,
         VER_UE5_2 = 1009,

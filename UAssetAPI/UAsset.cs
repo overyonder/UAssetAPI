@@ -1079,8 +1079,11 @@ namespace UAssetAPI
                 }
                 else
                 {
+                    // The last export ends at its own serial end: in UE 5.0-era saves the payload table of contents,
+                    // not the bulk data, follows it.
                     var uas = (UAsset)reader.Asset;
-                    nextStarting = uas.BulkDataStartOffset;
+                    nextStarting = uas.PayloadTocOffset > 0 && uas.PayloadTocOffset < uas.BulkDataStartOffset
+                        ? uas.PayloadTocOffset : uas.BulkDataStartOffset;
                 }
 
                 FName exportClassTypeName = Exports[i].GetExportClassType();
@@ -1670,6 +1673,9 @@ namespace UAssetAPI
         public byte[] AdditionalFiles;
 
         public byte[] Trailer;
+
+        /// <summary>Whether the payload table of contents precedes the bulk data, as in UE 5.0-era saves.</summary>
+        public bool PayloadTocBeforeBulkData;
 
         /// <summary>
         /// Data about previous versions of this package.
@@ -2351,11 +2357,22 @@ namespace UAssetAPI
                 long before = reader.BaseStream.Position;
                 reader.BaseStream.Seek(BulkDataStartOffset, SeekOrigin.Begin);
                 bool hasPayload = PayloadTocOffset > 0;
-                long end = hasPayload ? PayloadTocOffset : reader.BaseStream.Length;
-                AdditionalFiles = reader.ReadBytes((int)(end - BulkDataStartOffset));
-                if (hasPayload)
+                // UE 5.0-era saves wrote the payload table of contents before the bulk data; later ones after it.
+                PayloadTocBeforeBulkData = hasPayload && PayloadTocOffset < BulkDataStartOffset;
+                if (PayloadTocBeforeBulkData)
                 {
-                    Trailer = reader.ReadBytes((int)(reader.BaseStream.Length - reader.BaseStream.Position));
+                    reader.BaseStream.Seek(PayloadTocOffset, SeekOrigin.Begin);
+                    Trailer = reader.ReadBytes((int)(BulkDataStartOffset - PayloadTocOffset));
+                    AdditionalFiles = reader.ReadBytes((int)(reader.BaseStream.Length - BulkDataStartOffset));
+                }
+                else
+                {
+                    long end = hasPayload ? PayloadTocOffset : reader.BaseStream.Length;
+                    AdditionalFiles = reader.ReadBytes((int)(end - BulkDataStartOffset));
+                    if (hasPayload)
+                    {
+                        Trailer = reader.ReadBytes((int)(reader.BaseStream.Length - reader.BaseStream.Position));
+                    }
                 }
                 reader.BaseStream.Seek(before, SeekOrigin.Begin);
             }
@@ -3279,12 +3296,22 @@ namespace UAssetAPI
                     }
                 }
 
-                this.BulkDataStartOffset = (int)writer.BaseStream.Position;
-                writer.Write(AdditionalFiles);
-                if (PayloadTocOffset > 0)
+                if (PayloadTocOffset > 0 && PayloadTocBeforeBulkData)
                 {
                     this.PayloadTocOffset = writer.BaseStream.Position;
                     writer.Write(Trailer);
+                    this.BulkDataStartOffset = (int)writer.BaseStream.Position;
+                    writer.Write(AdditionalFiles);
+                }
+                else
+                {
+                    this.BulkDataStartOffset = (int)writer.BaseStream.Position;
+                    writer.Write(AdditionalFiles);
+                    if (PayloadTocOffset > 0)
+                    {
+                        this.PayloadTocOffset = writer.BaseStream.Position;
+                        writer.Write(Trailer);
+                    }
                 }
 
                 // Rewrite Section 3
@@ -3302,7 +3329,7 @@ namespace UAssetAPI
                         }
                         else
                         {
-                            nextStarting = this.BulkDataStartOffset;
+                            nextStarting = PayloadTocBeforeBulkData ? this.PayloadTocOffset : this.BulkDataStartOffset;
                         }
 
                         us.SerialOffset = categoryStarts[i];
