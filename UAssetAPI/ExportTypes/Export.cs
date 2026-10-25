@@ -130,6 +130,13 @@ namespace UAssetAPI.ExportTypes
         public byte[] Extras;
 
         /// <summary>
+        /// Data native actor and component serializers write after the tagged properties; null for other exports or
+        /// when the trailing bytes didn't match. Written before any remaining <see cref="Extras"/>.
+        /// </summary>
+        [JsonProperty]
+        public NativeClassTailData NativeTails;
+
+        /// <summary>
         /// The asset that this export is parsed with.
         /// </summary>
         [JsonIgnore]

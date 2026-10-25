@@ -1211,6 +1211,7 @@ namespace UAssetAPI
                     else
                     {
                         Exports[i].Extras = reader.ReadBytes((int)extrasLen);
+                        NativeClassTails.TryRead(this, Exports[i]);
                     }
 
                     Exports[i].alreadySerialized = true;
@@ -3292,6 +3293,7 @@ namespace UAssetAPI
                         categoryStarts[i] = writer.BaseStream.Position;
                         Export us = this.Exports[i];
                         us.Write(writer);
+                        if (us.NativeTails != null) NativeClassTails.Write(writer, us.NativeTails);
                         writer.Write(us.Extras);
                     }
                 }
