@@ -96,7 +96,7 @@ public class FEdGraphPinType : ICloneable
         result.MemberGuid = reader.ReadGuid();
         result.IsConst = reader.ReadBooleanInt();
         result.IsUObjectWrapper = reader.ReadBooleanInt();
-        result.SerializeAsSinglePrecisionFloat = reader.ReadBooleanInt();
+        if (EdGraphPinSerialization.HasSinglePrecisionFlag(reader.Asset)) result.SerializeAsSinglePrecisionFloat = reader.ReadBooleanInt();
         return result;
     }
 
@@ -117,7 +117,7 @@ public class FEdGraphPinType : ICloneable
         writer.Write(MemberGuid);
         writer.WriteBooleanInt(IsConst);
         writer.WriteBooleanInt(IsUObjectWrapper);
-        writer.WriteBooleanInt(SerializeAsSinglePrecisionFloat);
+        if (EdGraphPinSerialization.HasSinglePrecisionFlag(writer.Asset)) writer.WriteBooleanInt(SerializeAsSinglePrecisionFloat);
     }
 }
 
@@ -199,7 +199,7 @@ public class EdGraphPin : EdGraphPinReference
             PinId = reader.ReadGuid(),
             PinName = EdGraphPinSerialization.ReadName(reader),
             PinFriendlyName = ReadText(reader),
-            SourceIndex = reader.ReadInt32(),
+            SourceIndex = EdGraphPinSerialization.HasSourceIndex(reader.Asset) ? reader.ReadInt32() : -1,
             PinToolTip = reader.ReadFString(),
             Direction = EdGraphPinSerialization.ReadDirection(reader),
             PinType = FEdGraphPinType.Read(reader),
@@ -247,7 +247,7 @@ public class EdGraphPin : EdGraphPinReference
         writer.Write(PinId);
         writer.Write(PinName);
         PinFriendlyName.Write(writer, false);
-        writer.Write(SourceIndex);
+        if (EdGraphPinSerialization.HasSourceIndex(writer.Asset)) writer.Write(SourceIndex);
         writer.Write(PinToolTip);
         writer.Write((byte)Direction);
         PinType.Write(writer);
@@ -266,23 +266,35 @@ public class EdGraphPin : EdGraphPinReference
 
 internal static class EdGraphPinSerialization
 {
-    // UE5MainStreamObjectVersions.inl: EdGraphPinSourceIndex = 50. This fork's
-    // enum predates that symbol; the qualified installed 5.8.3 archive has 123.
+    static readonly Guid UE5MainStreamGuid = UAPUtils.GUID(0x697dd581, 0xe64f41ab, 0xaa4a51ec, 0xbeb7b628);
+    static readonly Guid BlueprintsGuid = UAPUtils.GUID(0xb0d832e4, 0x1f894f0d, 0xaccf7eb7, 0x36fd4aa2);
+
     internal static void RequireProfile(UAsset asset)
     {
         if (!SupportsProfile(asset))
-            throw new NotSupportedException("Native editor pins require the qualified UE5.8.3 tagged, uncooked, unfiltered archive profile (Framework=37, UE5Main=123, Release=44, UE5Release=68, Blueprints=10)");
+            throw new NotSupportedException("Native editor pins need an uncooked, tagged, unfiltered package with the UE 4.19+ pin layout (Blueprints >= EdGraphPinOptimized, Framework >= EdGraphPinContainerType, Release >= PinTypeIncludesUObjectWrapperFlag)");
     }
 
-    internal static bool SupportsProfile(UAsset asset) => !(
-            asset.ObjectVersion != ObjectVersion.VER_UE4_CORRECT_LICENSEE_FLAG ||
-            asset.ObjectVersionUE5 != ObjectVersionUE5.IMPORT_TYPE_HIERARCHIES ||
-            asset.IsFilterEditorOnly || asset.HasUnversionedProperties || asset.PackageFlags.HasFlag(EPackageFlags.PKG_Cooked) ||
-            (int)asset.GetCustomVersion<FFrameworkObjectVersion>() != 37 ||
-            asset.GetCustomVersion(UAPUtils.GUID(0x697dd581, 0xe64f41ab, 0xaa4a51ec, 0xbeb7b628)) != 123 ||
-            (int)asset.GetCustomVersion<FReleaseObjectVersion>() != 44 ||
-            (int)asset.GetCustomVersion<FUE5ReleaseStreamObjectVersion>() != 68 ||
-            asset.GetCustomVersion(UAPUtils.GUID(0xb0d832e4, 0x1f894f0d, 0xaccf7eb7, 0x36fd4aa2)) != 10);
+    /// <summary>
+    /// EdGraphPin.cpp UEdGraphPin::Serialize and FEdGraphPinType::Serialize: owned pin arrays since
+    /// FBlueprintsObjectVersion::EdGraphPinOptimized, pin names as FNames since PinsStoreFName, container types since
+    /// EdGraphPinContainerType, member references and const since their UE4 object versions, and the UObject wrapper flag
+    /// since FReleaseObjectVersion::PinTypeIncludesUObjectWrapperFlag. Later fields are gated where they're read.
+    /// </summary>
+    internal static bool SupportsProfile(UAsset asset) =>
+        !asset.IsFilterEditorOnly && !asset.HasUnversionedProperties && !asset.PackageFlags.HasFlag(EPackageFlags.PKG_Cooked) &&
+        asset.GetCustomVersion(BlueprintsGuid) >= 4 &&
+        asset.GetCustomVersion<FFrameworkObjectVersion>() >= FFrameworkObjectVersion.EdGraphPinContainerType &&
+        asset.GetCustomVersion<FFrameworkObjectVersion>() >= FFrameworkObjectVersion.PinsStoreFName &&
+        asset.ObjectVersion >= ObjectVersion.VER_UE4_SERIALIZE_PINTYPE_CONST &&
+        asset.GetCustomVersion<FReleaseObjectVersion>() >= FReleaseObjectVersion.PinTypeIncludesUObjectWrapperFlag;
+
+    /// <summary>FUE5MainStreamObjectVersion::EdGraphPinSourceIndex (50).</summary>
+    internal static bool HasSourceIndex(UAsset asset) => asset.GetCustomVersion(UE5MainStreamGuid) >= 50;
+
+    /// <summary>FUE5ReleaseStreamObjectVersion::SerializeFloatPinDefaultValuesAsSinglePrecision.</summary>
+    internal static bool HasSinglePrecisionFlag(UAsset asset) =>
+        asset.GetCustomVersion<FUE5ReleaseStreamObjectVersion>() >= FUE5ReleaseStreamObjectVersion.SerializeFloatPinDefaultValuesAsSinglePrecision;
 
     internal static int ReadCount(AssetBinaryReader reader, int minimumBytes)
     {

@@ -1140,8 +1140,8 @@ namespace UAssetAPI
                         }
                         else
                         {
-                            Exports[i] = EdGraphNodeExport.Supports(Exports[i])
-                                ? Exports[i].ConvertToChildExport<EdGraphNodeExport>()
+                            Exports[i] = EdGraphNodeExport.Supports(Exports[i]) ? Exports[i].ConvertToChildExport<EdGraphNodeExport>()
+                                : RigVMLinkExport.Supports(Exports[i]) ? Exports[i].ConvertToChildExport<RigVMLinkExport>()
                                 : Exports[i].ConvertToChildExport<NormalExport>();
                         }
                         break;

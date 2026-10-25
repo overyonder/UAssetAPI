@@ -41,6 +41,9 @@ public class EdGraphNodeExport : NormalExport
         return module != null && name != null && EdGraphNodeClasses.Tails.TryGetValue((module, name), out var tail) ? tail : null;
     }
 
+    /// <summary>K2Node_DynamicCast.cpp: PureState is serialized from FFortniteMainBranchObjectVersion::DynamicCastNodesUsePureStateEnum (85).</summary>
+    static bool HasPureStateByte(UAsset asset) => asset.GetCustomVersion(UAPUtils.GUID(0x601D1886, 0xAC644F84, 0xAA16D3DE, 0x0DEAC7D6)) >= 85;
+
     internal static bool Supports(Export export) => EdGraphPinSerialization.SupportsProfile(export.Asset) && TailOf(export) != null;
 
     public override void Read(AssetBinaryReader reader, int nextStarting = 0)
@@ -58,6 +61,7 @@ public class EdGraphNodeExport : NormalExport
                     for (int i = 0; i < UserDefinedPins.Length; i++) UserDefinedPins[i] = FUserPinInfo.Read(reader);
                     break;
                 case EdGraphNodeTail.DynamicCastPureState:
+                    if (!HasPureStateByte(reader.Asset)) break;
                     DynamicCastPureState = reader.ReadByte();
                     if (DynamicCastPureState > 2) throw new FormatException("Invalid dynamic-cast pure state");
                     break;
@@ -97,7 +101,7 @@ public class EdGraphNodeExport : NormalExport
                 foreach (var pin in UserDefinedPins) pin.Write(writer);
             }
             else if (UserDefinedPins != null) throw new FormatException("User-defined signature on a non-editable node");
-            if (tail == EdGraphNodeTail.DynamicCastPureState)
+            if (tail == EdGraphNodeTail.DynamicCastPureState && HasPureStateByte(writer.Asset))
             {
                 if (DynamicCastPureState is null or > 2) throw new FormatException("Invalid dynamic-cast pure state");
                 writer.Write(DynamicCastPureState.Value);
