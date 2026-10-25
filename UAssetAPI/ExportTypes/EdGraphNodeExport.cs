@@ -7,46 +7,41 @@ using UAssetAPI.UnrealTypes;
 
 namespace UAssetAPI.ExportTypes;
 
-/// <summary>Qualified native editor graph nodes, including their owned pins and signatures.</summary>
+/// <summary>The data a native editor graph node class writes after its pins.</summary>
+public enum EdGraphNodeTail
+{
+    None,
+    /// <summary>UK2Node_EditablePinBase and its subclasses: the user-defined pin array.</summary>
+    UserDefinedPins,
+    /// <summary>UK2Node_DynamicCast and its subclasses: the pure state.</summary>
+    DynamicCastPureState,
+    /// <summary>UDataflowEdNode and its subclasses: the Dataflow node's GUID.</summary>
+    DataflowNodeGuid,
+}
+
+/// <summary>Native editor graph nodes, including their owned pins and the data their class writes after them.</summary>
 public class EdGraphNodeExport : NormalExport
 {
     public EdGraphPin[] Pins;
     public FUserPinInfo[] UserDefinedPins;
     public byte? DynamicCastPureState;
+    public Guid? DataflowNodeGuid;
 
-    // Exact native identities whose inheritance/serializer has been checked. Adding
-    // a name here is not a claim of fixture or runtime coverage for that class.
-    private static readonly HashSet<string> BlueprintClasses = new(StringComparer.Ordinal)
-    {
-        "K2Node_CallFunction", "K2Node_CallParentFunction", "K2Node_CommutativeAssociativeBinaryOperator",
-        "K2Node_DynamicCast", "K2Node_Event", "K2Node_ExecutionSequence", "K2Node_Knot",
-        "K2Node_PromotableOperator", "K2Node_Select", "K2Node_VariableGet", "K2Node_VariableSet",
-        "K2Node_FunctionEntry", "K2Node_FunctionResult", "K2Node_CustomEvent", "K2Node_Tunnel",
-        "K2Node_IfThenElse"
-    };
-    private static readonly HashSet<string> AnimationClasses = new(StringComparer.Ordinal)
-    {
-        "AnimGraphNode_BlendSpacePlayer", "AnimGraphNode_Root", "AnimGraphNode_SaveCachedPose",
-        "AnimGraphNode_SequencePlayer", "AnimGraphNode_Slot", "AnimGraphNode_StateMachine",
-        "AnimGraphNode_StateResult", "AnimGraphNode_TransitionResult", "AnimGraphNode_UseCachedPose",
-        "AnimStateAliasNode", "AnimStateEntryNode", "AnimStateNode", "AnimStateTransitionNode"
-    };
-    private static bool HasUserPins(string name) => name is "K2Node_Event" or "K2Node_CustomEvent" or
-        "K2Node_FunctionEntry" or "K2Node_FunctionResult" or "K2Node_Tunnel";
-
-    internal static bool Supports(Export export)
+    /// <summary>
+    /// The node's tail, from the class table generated from engine source (tools/generate-edgraph-node-classes.sh),
+    /// or null when the export's class isn't a known native UEdGraphNode class.
+    /// </summary>
+    internal static EdGraphNodeTail? TailOf(Export export)
     {
         var asset = export.Asset;
-        if (!EdGraphPinSerialization.SupportsProfile(asset)) return false;
-        if (export.ClassIndex?.IsImport() != true) return false;
+        if (export.ClassIndex?.IsImport() != true) return null;
         var cls = export.ClassIndex.ToImport(asset);
-        if (cls?.ClassName?.ToString() != "Class" || cls.ClassPackage?.ToString() != "/Script/CoreUObject" || cls.OuterIndex?.IsImport() != true) return false;
-        var package = cls.OuterIndex.ToImport(asset);
-        string module = package?.ObjectName?.ToString(), name = cls.ObjectName?.ToString();
-        return module == "/Script/BlueprintGraph" && BlueprintClasses.Contains(name) ||
-            module == "/Script/AnimGraph" && AnimationClasses.Contains(name) ||
-            module == "/Script/ControlRigDeveloper" && name == "AnimGraphNode_ControlRig";
+        if (cls?.ClassName?.ToString() != "Class" || cls.ClassPackage?.ToString() != "/Script/CoreUObject" || cls.OuterIndex?.IsImport() != true) return null;
+        string module = cls.OuterIndex.ToImport(asset)?.ObjectName?.ToString(), name = cls.ObjectName?.ToString();
+        return module != null && name != null && EdGraphNodeClasses.Tails.TryGetValue((module, name), out var tail) ? tail : null;
     }
+
+    internal static bool Supports(Export export) => EdGraphPinSerialization.SupportsProfile(export.Asset) && TailOf(export) != null;
 
     public override void Read(AssetBinaryReader reader, int nextStarting = 0)
     {
@@ -56,16 +51,19 @@ public class EdGraphNodeExport : NormalExport
             base.Read(reader, nextStarting);
             Pins = new EdGraphPin[EdGraphPinSerialization.ReadCount(reader, 4)];
             for (int i = 0; i < Pins.Length; i++) Pins[i] = EdGraphPin.Read(reader);
-            string name = GetExportClassType().ToString();
-            if (HasUserPins(name))
+            switch (TailOf(this))
             {
-                UserDefinedPins = new FUserPinInfo[EdGraphPinSerialization.ReadCount(reader, 9)];
-                for (int i = 0; i < UserDefinedPins.Length; i++) UserDefinedPins[i] = FUserPinInfo.Read(reader);
-            }
-            if (name == "K2Node_DynamicCast")
-            {
-                DynamicCastPureState = reader.ReadByte();
-                if (DynamicCastPureState > 2) throw new FormatException("Invalid dynamic-cast pure state");
+                case EdGraphNodeTail.UserDefinedPins:
+                    UserDefinedPins = new FUserPinInfo[EdGraphPinSerialization.ReadCount(reader, 9)];
+                    for (int i = 0; i < UserDefinedPins.Length; i++) UserDefinedPins[i] = FUserPinInfo.Read(reader);
+                    break;
+                case EdGraphNodeTail.DynamicCastPureState:
+                    DynamicCastPureState = reader.ReadByte();
+                    if (DynamicCastPureState > 2) throw new FormatException("Invalid dynamic-cast pure state");
+                    break;
+                case EdGraphNodeTail.DataflowNodeGuid:
+                    DataflowNodeGuid = reader.ReadGuid();
+                    break;
             }
             // An unrecognized subclass tail must remain an opaque export. The
             // normal raw fallback retains it; do not advertise unsafe typed edits.
@@ -92,19 +90,25 @@ public class EdGraphNodeExport : NormalExport
                 if (pin == null) EdGraphPinReference.Write(writer, null);
                 else pin.Write(writer);
             }
-            string name = GetExportClassType().ToString();
-            if (HasUserPins(name))
+            var tail = TailOf(this);
+            if (tail == EdGraphNodeTail.UserDefinedPins)
             {
                 EdGraphPinSerialization.WriteCount(writer, UserDefinedPins?.Length);
                 foreach (var pin in UserDefinedPins) pin.Write(writer);
             }
             else if (UserDefinedPins != null) throw new FormatException("User-defined signature on a non-editable node");
-            if (name == "K2Node_DynamicCast")
+            if (tail == EdGraphNodeTail.DynamicCastPureState)
             {
                 if (DynamicCastPureState is null or > 2) throw new FormatException("Invalid dynamic-cast pure state");
                 writer.Write(DynamicCastPureState.Value);
             }
             else if (DynamicCastPureState != null) throw new FormatException("Dynamic-cast state on another node class");
+            if (tail == EdGraphNodeTail.DataflowNodeGuid)
+            {
+                if (DataflowNodeGuid is null) throw new FormatException("Missing Dataflow node GUID");
+                writer.Write(DataflowNodeGuid.Value);
+            }
+            else if (DataflowNodeGuid != null) throw new FormatException("Dataflow node GUID on another node class");
         }
         catch (Exception ex) when (ex is not OutOfMemoryException and not FName.DummyFNameSerializationException)
         {
