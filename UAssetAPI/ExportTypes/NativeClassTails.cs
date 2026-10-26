@@ -31,6 +31,18 @@ public enum NativeClassTail
     SkyAtmosphere = 8192,
     PCGComponent = 16384,
     StaticMesh = 32768,
+    AnimationAsset = 65536,
+    AnimSequence = 131072,
+    ControlRig = 262144,
+    RigVMMemoryStorage = 524288,
+}
+
+/// <summary>RigVMCore/RigVMPropertyPath.h operator&lt;&lt;(FArchive&amp;, FRigVMPropertyPathDescription&amp;).</summary>
+public class FRigVMPropertyPathDescriptionData
+{
+    [JsonProperty] public int PropertyIndex;
+    [JsonProperty] public FString HeadCPPType;
+    [JsonProperty] public FString SegmentPath;
 }
 
 /// <summary>StaticMesh.cpp operator&lt;&lt;(FArchive&amp;, FStaticMaterial&amp;), with FMeshUVChannelInfo inline.</summary>
@@ -137,6 +149,22 @@ public class NativeClassTailData
     [JsonProperty] public List<bool> StaticMeshLegacyDescriptionValid;
     [JsonProperty] public bool? StaticMeshHasSpeedTreeWind;
     [JsonProperty] public List<FStaticMaterialData> StaticMeshMaterials;
+    /// <summary>Animation/AnimationAsset.cpp: the skeleton's GUID when the asset was saved.</summary>
+    [JsonProperty] public Guid? SkeletonGuid;
+    /// <summary>Animation/AnimSequence.cpp UAnimSequence::Serialize: strip flags, then the raw tracks as stored
+    /// (FRawAnimSequenceTrack position, rotation and scale key arrays, each as element size, count and bytes).</summary>
+    [JsonProperty] public byte[] AnimSequenceStripFlags;
+    [JsonProperty] public byte[] AnimSequenceRawTracks;
+    /// <summary>Source raw tracks, saved from VER_UE4_ANIMATION_ADD_TRACKCURVES until RemovingSourceAnimationData.</summary>
+    [JsonProperty] public byte[] AnimSequenceSourceRawTracks;
+    /// <summary>Compressed data saved inline before FFrameworkObjectVersion::MoveCompressedAnimDataToTheDDC.</summary>
+    [JsonProperty] public byte[] AnimSequenceLegacyCompressedData;
+    [JsonProperty] public bool? AnimSequenceSerializeCompressedData;
+    /// <summary>ControlRig.cpp: physics solver IDs and names, from ControlRigStoresPhysicsSolvers.</summary>
+    [JsonProperty] public List<KeyValuePair<Guid, FName>> ControlRigPhysicsSolvers;
+    /// <summary>RigVMCore/RigVMMemoryStorage.cpp: the storage's property paths and its ERigVMMemoryType.</summary>
+    [JsonProperty] public List<FRigVMPropertyPathDescriptionData> RigVMPropertyPaths;
+    [JsonProperty] public byte? RigVMMemoryType;
 }
 
 public class FSimpleMemberReferenceData
@@ -157,7 +185,9 @@ public static class NativeClassTails
         WorldPartitionSerializeStreamingPolicyOnCook = 74, MaterialSavedCachedData = 36, MaterialAttributeLayerParameters = 21,
         LevelsetSerializationSupportForBodySetup = 42, DisableLevelset_v14_10 = 1, RemovedAtmosphericFog = 46,
         DynamicTrackingKeysSerializedInComponent = 20, DeprecatedHighResSourceMesh = 49, SerializeMeshDescriptionBase = 25,
-        TextureStreamingMeshUVChannelData = 10, MeshMaterialSlotOverlayMaterialAdded = 196;
+        TextureStreamingMeshUVChannelData = 10, MeshMaterialSlotOverlayMaterialAdded = 196, RemovingSourceAnimationData = 3,
+        ControlRigStoresPhysicsSolvers = 31;
+    static readonly Guid ControlRigGuid = UAPUtils.GUID(0xA7820CFB, 0x20A74359, 0x8C542C14, 0x9623CF50);
     static readonly Guid PCGGuid = UAPUtils.GUID(0x2763920D, 0x0F784B39, 0x986E4BB3, 0xA88D666D);
 
     static bool BoolProperty(NormalExport export, string name) =>
@@ -225,6 +255,47 @@ public static class NativeClassTails
             data.StaticMeshMaterials.Add(m);
         }
         return true;
+    }
+
+    /// <summary>Animation/AnimSequence.cpp UAnimSequence::Serialize; false when compressed data follows, which it leaves unread.</summary>
+    static bool ReadAnimSequence(AssetBinaryReader reader, Stream stream, UAsset asset, NativeClassTailData data)
+    {
+        data.AnimSequenceStripFlags = reader.ReadBytes(2);
+        if ((data.AnimSequenceStripFlags[0] & 1) == 0)
+        {
+            data.AnimSequenceRawTracks = ReadRawTracks(reader, stream, asset);
+            if (asset.ObjectVersion >= ObjectVersion.VER_UE4_ANIMATION_ADD_TRACKCURVES && asset.GetCustomVersion(UE5MainStreamGuid) < RemovingSourceAnimationData)
+                data.AnimSequenceSourceRawTracks = ReadRawTracks(reader, stream, asset);
+        }
+        if (asset.GetCustomVersion<FFrameworkObjectVersion>() < FFrameworkObjectVersion.MoveCompressedAnimDataToTheDDC)
+        {
+            int n = reader.ReadInt32();
+            if (n < 0 || n > stream.Length - stream.Position) return false;
+            data.AnimSequenceLegacyCompressedData = reader.ReadBytes(n);
+            return true;
+        }
+        data.AnimSequenceSerializeCompressedData = reader.ReadBooleanInt();
+        return data.AnimSequenceSerializeCompressedData == false;
+    }
+
+    /// <summary>A TArray of FRawAnimSequenceTrack kept as stored: each track's key arrays are bulk serialized (element
+    /// size, count, bytes), with scale keys from VER_UE4_ANIM_SUPPORT_NONUNIFORM_SCALE_ANIMATION.</summary>
+    static byte[] ReadRawTracks(AssetBinaryReader reader, Stream stream, UAsset asset)
+    {
+        long start = stream.Position;
+        int tracks = reader.ReadInt32();
+        if (tracks < 0 || tracks > stream.Length - stream.Position) throw new FormatException("Invalid raw track count");
+        int arrays = asset.ObjectVersion >= ObjectVersion.VER_UE4_ANIM_SUPPORT_NONUNIFORM_SCALE_ANIMATION ? 3 : 2;
+        for (int t = 0; t < tracks; t++)
+            for (int a = 0; a < arrays; a++)
+            {
+                long size = reader.ReadInt32(), count = reader.ReadInt32();
+                if (size < 0 || count < 0 || size * count > stream.Length - stream.Position) throw new FormatException("Invalid raw key array");
+                stream.Position += size * count;
+            }
+        long end = stream.Position;
+        stream.Position = start;
+        return reader.ReadBytes((int)(end - start));
     }
 
     static void WriteStaticMesh(AssetBinaryWriter writer, NativeClassTailData data)
@@ -365,6 +436,23 @@ public static class NativeClassTails
             }
             if (tails.HasFlag(NativeClassTail.ObjectRedirector)) data.RedirectorDestination = new FPackageIndex(reader);
             if (tails.HasFlag(NativeClassTail.StaticMesh) && !ReadStaticMesh(reader, stream, asset, normal, data)) return;
+            if (tails.HasFlag(NativeClassTail.AnimationAsset) && asset.ObjectVersion >= ObjectVersion.VER_UE4_SKELETON_GUID_SERIALIZATION) data.SkeletonGuid = reader.ReadGuid();
+            if (tails.HasFlag(NativeClassTail.AnimSequence) && !ReadAnimSequence(reader, stream, asset, data)) return;
+            if (tails.HasFlag(NativeClassTail.ControlRig) && asset.GetCustomVersion(ControlRigGuid) >= ControlRigStoresPhysicsSolvers)
+            {
+                int n = reader.ReadInt32();
+                if (n < 0 || n > (stream.Length - stream.Position) / 24) return;
+                data.ControlRigPhysicsSolvers = new List<KeyValuePair<Guid, FName>>(n);
+                for (int i = 0; i < n; i++) data.ControlRigPhysicsSolvers.Add(new(reader.ReadGuid(), reader.ReadFName()));
+            }
+            if (tails.HasFlag(NativeClassTail.RigVMMemoryStorage))
+            {
+                int n = reader.ReadInt32();
+                if (n < 0 || n > (stream.Length - stream.Position) / 12) return;
+                data.RigVMPropertyPaths = new List<FRigVMPropertyPathDescriptionData>(n);
+                for (int i = 0; i < n; i++) data.RigVMPropertyPaths.Add(new FRigVMPropertyPathDescriptionData { PropertyIndex = reader.ReadInt32(), HeadCPPType = reader.ReadFString(), SegmentPath = reader.ReadFString() });
+                data.RigVMMemoryType = reader.ReadByte();
+            }
             if (tails.HasFlag(NativeClassTail.PCGComponent) && asset.GetCustomVersion(PCGGuid) >= DynamicTrackingKeysSerializedInComponent)
             {
                 int keys = reader.ReadInt32();
@@ -448,6 +536,26 @@ public static class NativeClassTails
         if (data.MaterialSavedCachedExpressionData != null) writer.WriteBooleanInt(data.MaterialSavedCachedExpressionData.Value);
         if (data.RedirectorDestination != null) data.RedirectorDestination.Write(writer);
         if (data.StaticMeshMaterials != null) WriteStaticMesh(writer, data);
+        if (data.SkeletonGuid != null) writer.Write(data.SkeletonGuid.Value);
+        if (data.AnimSequenceStripFlags != null)
+        {
+            writer.Write(data.AnimSequenceStripFlags);
+            if (data.AnimSequenceRawTracks != null) writer.Write(data.AnimSequenceRawTracks);
+            if (data.AnimSequenceSourceRawTracks != null) writer.Write(data.AnimSequenceSourceRawTracks);
+            if (data.AnimSequenceLegacyCompressedData != null) { writer.Write(data.AnimSequenceLegacyCompressedData.Length); writer.Write(data.AnimSequenceLegacyCompressedData); }
+            if (data.AnimSequenceSerializeCompressedData != null) writer.WriteBooleanInt(data.AnimSequenceSerializeCompressedData.Value);
+        }
+        if (data.ControlRigPhysicsSolvers != null)
+        {
+            writer.Write(data.ControlRigPhysicsSolvers.Count);
+            foreach (var kv in data.ControlRigPhysicsSolvers) { writer.Write(kv.Key); writer.Write(kv.Value); }
+        }
+        if (data.RigVMPropertyPaths != null)
+        {
+            writer.Write(data.RigVMPropertyPaths.Count);
+            foreach (var d in data.RigVMPropertyPaths) { writer.Write(d.PropertyIndex); writer.Write(d.HeadCPPType); writer.Write(d.SegmentPath); }
+            writer.Write(data.RigVMMemoryType.Value);
+        }
         if (data.PCGTrackedKeys != null)
         {
             writer.Write(data.PCGTrackedKeys.Count);
