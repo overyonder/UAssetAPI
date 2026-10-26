@@ -296,9 +296,13 @@ public class NativeClassTailData
     /// <summary>Animation/AnimSequence.cpp UAnimSequence::Serialize: strip flags, then the raw tracks as stored
     /// (FRawAnimSequenceTrack position, rotation and scale key arrays, each as element size, count and bytes).</summary>
     [JsonProperty] public byte[] AnimSequenceStripFlags;
-    [JsonProperty] public byte[] AnimSequenceRawTracks;
+    [JsonProperty, WriteBackCopy] public byte[] AnimSequenceRawTracks;
+    /// <summary>AnimSequenceRawTracks decoded: per track, its position, rotation and scale keys, each a flat array of components.</summary>
+    [JsonProperty] public List<float[][]> AnimSequenceRawTracksKeys;
     /// <summary>Source raw tracks, saved from VER_UE4_ANIMATION_ADD_TRACKCURVES until RemovingSourceAnimationData.</summary>
-    [JsonProperty] public byte[] AnimSequenceSourceRawTracks;
+    [JsonProperty, WriteBackCopy] public byte[] AnimSequenceSourceRawTracks;
+    /// <summary>AnimSequenceSourceRawTracks decoded: per track, its position, rotation and scale keys, each a flat array of components.</summary>
+    [JsonProperty] public List<float[][]> AnimSequenceSourceRawTracksKeys;
     /// <summary>Compressed data saved inline before FFrameworkObjectVersion::MoveCompressedAnimDataToTheDDC.</summary>
     [JsonProperty] public byte[] AnimSequenceLegacyCompressedData;
     [JsonProperty] public bool? AnimSequenceSerializeCompressedData;
@@ -441,8 +445,12 @@ public static class NativeClassTails
         if ((data.AnimSequenceStripFlags[0] & 1) == 0)
         {
             data.AnimSequenceRawTracks = ReadRawTracks(reader, stream, asset);
+            data.AnimSequenceRawTracksKeys = DecodeRawTracks(data.AnimSequenceRawTracks, asset);
             if (asset.ObjectVersion >= ObjectVersion.VER_UE4_ANIMATION_ADD_TRACKCURVES && asset.GetCustomVersion(UE5MainStreamGuid) < RemovingSourceAnimationData)
+            {
                 data.AnimSequenceSourceRawTracks = ReadRawTracks(reader, stream, asset);
+                data.AnimSequenceSourceRawTracksKeys = DecodeRawTracks(data.AnimSequenceSourceRawTracks, asset);
+            }
         }
         if (asset.GetCustomVersion<FFrameworkObjectVersion>() < FFrameworkObjectVersion.MoveCompressedAnimDataToTheDDC)
         {
@@ -473,6 +481,32 @@ public static class NativeClassTails
         long end = stream.Position;
         stream.Position = start;
         return reader.ReadBytes((int)(end - start));
+    }
+
+    /// <summary>FRawAnimSequenceTrack key arrays as stored by TArray::BulkSerialize: element size, count and elements. A
+    /// 12- or 16-byte element is a single-precision vector or quaternion, a 24- or 32-byte one double precision.</summary>
+    static List<float[][]> DecodeRawTracks(byte[] bytes, UAsset asset)
+    {
+        var tracks = new List<float[][]>();
+        using var r = new BinaryReader(new MemoryStream(bytes));
+        int n = r.ReadInt32();
+        // positions and rotations, and scales from VER_UE4_ANIM_SUPPORT_NONUNIFORM_SCALE_ANIMATION
+        int stored = asset.ObjectVersion >= ObjectVersion.VER_UE4_ANIM_SUPPORT_NONUNIFORM_SCALE_ANIMATION ? 3 : 2;
+        while (tracks.Count < n)
+        {
+            var arrays = new List<float[]>();
+            for (int a = 0; a < stored; a++)
+            {
+                int size = r.ReadInt32(), count = r.ReadInt32();
+                bool wide = size == 24 || size == 32;
+                int components = wide ? size / 8 : size / 4;
+                var keys = new float[count * components];
+                for (int i = 0; i < keys.Length; i++) keys[i] = wide ? (float)r.ReadDouble() : r.ReadSingle();
+                arrays.Add(keys);
+            }
+            tracks.Add(arrays.ToArray());
+        }
+        return tracks;
     }
 
     static void WriteStaticMesh(AssetBinaryWriter writer, NativeClassTailData data)
