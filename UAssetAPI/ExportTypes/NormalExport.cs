@@ -151,8 +151,16 @@ namespace UAssetAPI.ExportTypes
                 }
             }
             FName parentName = GetClassTypeForAncestry(reader.Asset, out FName parentModulePath);
-            while ((bit = MainSerializer.Read(reader, null, parentName, parentModulePath, unversionedHeader, true)) != null)
+            while (true)
             {
+                try { bit = MainSerializer.Read(reader, null, parentName, parentModulePath, unversionedHeader, true); }
+                catch (Exception ex) when (Data.Count > 0)
+                {
+                    // a misread usually belongs to the property before the one that failed, so name it
+                    var last = Data[^1];
+                    throw new FormatException($"{ex.Message} (after {last.Name} {last.PropertyType} read from {last.Offset})", ex);
+                }
+                if (bit == null) break;
                 Data.Add(bit);
             }
 

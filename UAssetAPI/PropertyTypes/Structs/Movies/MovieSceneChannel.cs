@@ -46,7 +46,7 @@ public class FMovieSceneChannel<T>
             DefaultValue = valueReader();
             bHasDefaultValue = reader.ReadBooleanInt();
             TickResolution = new FFrameRate(reader);
-            bShowCurve = reader.Asset.GetCustomVersion<FFortniteMainBranchObjectVersion>() > FFortniteMainBranchObjectVersion.SerializeFloatChannelShowCurve && reader.ReadBooleanInt();
+            bShowCurve = reader.Asset.GetCustomVersion<FFortniteMainBranchObjectVersion>() >= FFortniteMainBranchObjectVersion.SerializeFloatChannelShowCurve && reader.ReadBooleanInt();
         }
     }
 
@@ -72,7 +72,7 @@ public class FMovieSceneChannel<T>
         valueWriter(DefaultValue);
         writer.WriteBooleanInt(bHasDefaultValue);
         TickResolution.Write(writer);
-        if (writer.Asset.GetCustomVersion<FFortniteMainBranchObjectVersion>() > FFortniteMainBranchObjectVersion.SerializeFloatChannelShowCurve)
+        if (writer.Asset.GetCustomVersion<FFortniteMainBranchObjectVersion>() >= FFortniteMainBranchObjectVersion.SerializeFloatChannelShowCurve)
             writer.WriteBooleanInt(bShowCurve);
     }
 }
