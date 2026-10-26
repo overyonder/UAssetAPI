@@ -23,44 +23,20 @@ public class VectorNetQuantizePropertyData : StructPropertyData
     public override bool HasCustomStructSerialization => true;
     public override FString PropertyType => CurrentPropertyType;
 
+    // NetSerialization.h gives FVector_NetQuantize and its variants net serializers only, and STRUCT_Immutable isn't inherited
+    // from FVector (STRUCT_Inherit is HasInstancedReference | Atomic), so UScriptStruct::SerializeItem saves them as tagged
+    // properties, X, Y and Z
     public override void Read(AssetBinaryReader reader, bool includeHeader, long leng1, long leng2 = 0, PropertySerializationContext serializationContext = PropertySerializationContext.Normal)
     {
         Value = [];
-        //either this or 5.0+ or unversioned
-        if (reader.Asset.ObjectVersionUE5 >= ObjectVersionUE5.LARGE_WORLD_COORDINATES)
-        {
-            var data = new VectorPropertyData(Name);
-            data.Read(reader, includeHeader, leng1, leng2, serializationContext);
-            Value.Add(data);
-        }
-        else
-        {
-            StructType = FName.DefineDummy(reader.Asset, PropertyType);
-            base.Read(reader, includeHeader, 1, leng2, PropertySerializationContext.StructFallback);
-        }
+        StructType = FName.DefineDummy(reader.Asset, PropertyType);
+        base.Read(reader, includeHeader, 1, leng2, PropertySerializationContext.StructFallback);
     }
 
     public override int Write(AssetBinaryWriter writer, bool includeHeader, PropertySerializationContext serializationContext = PropertySerializationContext.Normal)
     {
-        if (writer.Asset.ObjectVersionUE5 >= ObjectVersionUE5.LARGE_WORLD_COORDINATES)
-        {
-            if (Value == null)
-            {
-                Value = new List<PropertyData>();
-                Value.Add(new VectorPropertyData(Name));
-            }
-
-            if (Value.Count == 1 && Value[0] is VectorPropertyData vector)
-            {
-                return Value[0].Write(writer, includeHeader, serializationContext);
-            }
-            throw new FormatException($"{PropertyType} must have a VectorPropertyData child");
-        }
-        else
-        {
-            StructType = FName.DefineDummy(writer.Asset, PropertyType);
-            return base.Write(writer, includeHeader, PropertySerializationContext.StructFallback);
-        }
+        StructType = FName.DefineDummy(writer.Asset, PropertyType);
+        return base.Write(writer, includeHeader, PropertySerializationContext.StructFallback);
     }
 }
 
