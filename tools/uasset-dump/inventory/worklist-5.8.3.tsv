@@ -1,0 +1,630 @@
+kind	name	module or traits	verdict	packages using it	definition
+class	UObject	CoreUObject	decoded: NormalExport (tagged properties and object GUID)	1925444	Source/Runtime/CoreUObject/Private/UObject/Obj.cpp
+class	UActorComponent	Engine	decoded: NativeClassTails UActorComponent	551574	Private/Components/ActorComponent.cpp
+class	USceneComponent	Engine	decoded: NativeClassTails USceneComponent	534631	Private/Components/SceneComponent.cpp
+class	UDEPRECATED_MetaData	CoreUObject	decoded: MetaDataExport	410433	Source/Runtime/CoreUObject/Private/UObject/MetaData.cpp
+class	UPrimitiveComponent	Engine	no data: remote object migration only	380467	Private/Components/PrimitiveComponent.cpp
+class	UStaticMeshComponent	Engine	decoded: NativeClassTails UStaticMeshComponent	344925	Private/Components/StaticMeshComponent.cpp
+class	AActor	Engine	decoded: NativeClassTails AActor	305486	Private/Actor.cpp
+class	AStaticMeshActor	Engine	no data: the body never writes to the archive	186640	Private/StaticMeshActor.cpp
+class	UInstancedStaticMeshComponent	Engine	decoded: ClassSerializers UInstancedStaticMeshComponent	123504	Private/InstancedStaticMesh.cpp
+class	UAssetImportData	Engine	decoded: ClassSerializers UAssetImportData	69855	Private/EditorFramework/AssetImportData.cpp
+class	ULevelInstanceComponent	Engine	no data: reference collection only	49987	Private/LevelInstance/LevelInstanceComponent.cpp
+class	UMaterialExpression	Engine	no data: input reordering on load	45561	Private/Materials/MaterialExpressions.cpp
+class	UEdGraphNode	Engine	decoded: EdGraphNodeExport	43995	Private/EdGraph/EdGraphNode.cpp
+class	USceneThumbnailInfo	UnrealEd	no data: the body never writes to the archive	36765	Source/Editor/UnrealEd/Private/ThumbnailRendering/SceneThumbnailInfo.cpp
+class	UBodySetup	Engine	decoded: NativeClassTails UBodySetup	35155	BodySetup.cpp
+class	UK2Node	BlueprintGraph	no data: reference collection only	34588	Source/Editor/BlueprintGraph/Private/K2Node.cpp
+class	UStaticMesh	Engine	decoded: NativeClassTails UStaticMesh	34377	Private/StaticMesh.cpp
+class	UMeshDescriptionBaseBulkData	MeshDescription	decoded: ClassSerializers UMeshDescriptionBaseBulkData	31939	Source/Runtime/MeshDescription/Private/MeshDescriptionBaseBulkData.cpp
+class	UNavCollision	NavigationSystem	decoded: ClassSerializers UNavCollision	28520	Source/Runtime/NavigationSystem/Private/NavCollision.cpp
+class	UMaterialInterface	Engine	decoded: NativeClassTails UMaterialInterface	25356	Private/Materials/MaterialInterface.cpp
+class	UMovieSceneDecorationContainerObject	MovieScene	no data: the body never writes to the archive	24485	Source/Runtime/MovieScene/Private/Decorations/MovieSceneDecorationContainer.cpp
+class	UTexture	Engine	decoded: ClassSerializers UTexture	24170	Private/Texture.cpp
+class	UTexture2D	Engine	decoded: ClassSerializers UTexture2D	23730	Private/Texture2D.cpp
+class	UMaterialInstance	Engine	decoded: NativeClassTails UMaterialInstance	19841	Private/Materials/MaterialInstance.cpp
+class	USceneThumbnailInfoWithPrimitive	UnrealEd	no data: the body never writes to the archive	14237	Source/Editor/UnrealEd/Private/ThumbnailRendering/SceneThumbnailInfoWithPrimitive.cpp
+class	UK2Node_EditablePinBase	BlueprintGraph	decoded: EdGraphNodeExport (user-defined pins)	12794	Source/Editor/BlueprintGraph/Private/K2Node_EditablePinBase.cpp
+class	UInterchangeAssetImportData	InterchangeEngine	decoded: ClassSerializers UInterchangeAssetImportData	12698	Private/InterchangeAssetImportData.cpp
+class	UMaterialInterfaceEditorOnlyData	Engine	decoded: NativeClassTails UMaterialInterfaceEditorOnlyData	11767	Private/Materials/MaterialInterface.cpp
+class	UAnimationAsset	Engine	decoded: NativeClassTails UAnimationAsset	11202	Private/AnimationAsset.cpp
+class	UField	CoreUObject	decoded: FieldExport	10726	Source/Runtime/CoreUObject/Private/UObject/Class.cpp
+class	UAnimSequenceBase	Engine	no data: curve fix-ups on load	10530	Private/Animation/AnimSequenceBase.cpp
+class	UStruct	CoreUObject	decoded: StructExport	10142	Source/Runtime/CoreUObject/Private/UObject/Class.cpp
+class	AWorldPartitionHLOD	Engine	no data: the body never writes to the archive	9014	Private/WorldPartition/HLOD/HLODActor.cpp
+class	UAnimSequence	Engine	decoded: NativeClassTails UAnimSequence	8908	Private/Animation/AnimSequence.cpp
+class	UMovieSceneSection	MovieScene	no data: the body never writes to the archive	8449	Source/Runtime/MovieScene/Private/MovieSceneSection.cpp
+class	USoundBase	Engine	no data: the body never writes to the archive	7707	Private/SoundBase.cpp
+class	UMovieSceneSequence	MovieScene	no data: the body never writes to the archive	7537	Source/Runtime/MovieScene/Private/MovieSceneSequence.cpp
+class	UMovieScene	MovieScene	no data: the body never writes to the archive	7522	Source/Runtime/MovieScene/Private/MovieScene.cpp
+class	URigVMHost	RigVM	no data: reference collection only	7354	Plugins/Runtime/RigVM/Source/RigVM/Private/RigVMHost.cpp
+class	UControlRig	ControlRig	decoded: NativeClassTails UControlRig	7309	Plugins/Animation/ControlRig/Source/ControlRig/Private/ControlRig.cpp
+class	UMovieSceneParameterSection	MovieSceneTracks	no data: the body never writes to the archive	7237	Source/Runtime/MovieSceneTracks/Private/Sections/MovieSceneParameterSection.cpp
+class	UMovieSceneControlRigParameterSection	ControlRig	no data: the body never writes to the archive	7192	Plugins/Animation/ControlRig/Source/ControlRig/Private/Sequencer/MovieSceneControlRigParameterSection.cpp
+class	USoundWave	Engine	decoded: ClassSerializers USoundWave	7124	Private/SoundWave.cpp
+class	UClass	CoreUObject	decoded: ClassExport	6534	Source/Runtime/CoreUObject/Private/UObject/Class.cpp
+class	UK2Node_CallFunction	BlueprintGraph	no data: the body never writes to the archive	6241	Source/Editor/BlueprintGraph/Private/K2Node_CallFunction.cpp
+class	UBlueprint	Engine	no data	6238	Private/Blueprint.cpp
+class	UBlueprintCore	Engine	decoded: NativeClassTails UBlueprintCore	6238	Private/Blueprint.cpp
+class	UBlueprintGeneratedClass	Engine	decoded: ClassExport	6234	Private/BlueprintGeneratedClass.cpp
+class	UK2Node_FunctionTerminator	BlueprintGraph	no data: the body never writes to the archive	5673	Source/Editor/BlueprintGraph/Private/K2Node_FunctionTerminator.cpp
+class	UAnimationModifiersAssetUserData	AnimationModifiers	no data: the body never writes to the archive	5630	Source/Editor/AnimationModifiers/Private/AnimationModifiersAssetUserData.cpp
+class	UK2Node_Event	BlueprintGraph	no data: the body never writes to the archive	5544	Source/Editor/BlueprintGraph/Private/K2Node_Event.cpp
+class	ULightComponentBase	Engine	no data: reference collection only	4857	Private/Components/LightComponent.cpp
+class	UPCGSettings	PCG	no data: the body never writes to the archive	4813	Plugins/PCG/Source/PCG/Private/PCGSettings.cpp
+class	UPCGComponent	PCG	decoded: NativeClassTails UPCGComponent	4591	Plugins/PCG/Source/PCG/Private/PCGComponent.cpp
+class	UK2Node_Variable	BlueprintGraph	no data: the body never writes to the archive	4571	Source/Editor/BlueprintGraph/Private/K2Node_Variable.cpp
+class	UK2Node_FunctionEntry	BlueprintGraph	no data: only without a backing archive	4542	Source/Editor/BlueprintGraph/Private/K2Node_FunctionEntry.cpp
+class	UFbxAnimSequenceImportData	UnrealEd	no data: the body never writes to the archive	4408	Source/Editor/UnrealEd/Private/Fbx/FbxAnimSequenceImportData.cpp
+class	ULightComponent	Engine	legacy: depth maps before MapBuildDataSeparatePackage, in no reference package	4365	Private/Components/LightComponent.cpp
+class	UDecalComponent	Engine	no data: the body never writes to the archive	4071	Private/Components/DecalComponent.cpp
+class	UInterchangePipelineBase	InterchangeCore	no data: only when duplicating	3870	Source/Runtime/Interchange/Core/Private/InterchangePipelineBase.cpp
+class	ADecalActor	Engine	no data: the body never writes to the archive	3814	Private/DecalActor.cpp
+class	UNiagaraComponent	Niagara	no data	3770	Plugins/FX/Niagara/Source/Niagara/Private/NiagaraComponent.cpp
+class	ULocalLightComponent	Engine	no data: the body never writes to the archive	3734	Private/Components/LocalLightComponent.cpp
+class	USCS_Node	Engine	no data: the body never writes to the archive	3599	Private/SCS_Node.cpp
+class	USimpleConstructionScript	Engine	no data: the body never writes to the archive	3599	Private/SimpleConstructionScript.cpp
+class	USplineComponent	Engine	decoded: SceneComponentExport	3503	Private/Components/SplineComponent.cpp
+class	UModel	Engine	decoded: ClassSerializers UModel	3422	Private/Model.cpp
+class	UPolys	Engine	decoded: ClassSerializers UPolys	3422	Private/Polygon.cpp
+class	UShapeComponent	Engine	no data: the body never writes to the archive	3417	Private/Components/ShapeComponent.cpp
+class	UPointLightComponent	Engine	no data: the body never writes to the archive	3416	Private/Components/PointLightComponent.cpp
+class	UMaterial	Engine	decoded: NativeClassTails UMaterial	3044	Private/Materials/Material.cpp
+class	UFunction	CoreUObject	decoded: FunctionExport	2934	Source/Runtime/CoreUObject/Private/UObject/Class.cpp
+class	ALevelInstance	Engine	decoded: ClassSerializers ALevelInstance	2921	Private/LevelInstance/LevelInstanceActor.cpp
+class	UAnimGraphNode_Base	AnimGraph	no data: the body never writes to the archive	2546	Source/Editor/AnimGraph/Private/AnimGraphNode_Base.cpp
+class	UK2Node_VariableGet	BlueprintGraph	no data: the body never writes to the archive	2279	Source/Editor/BlueprintGraph/Private/K2Node_VariableGet.cpp
+class	UWorld	Engine	decoded: NativeClassTails UWorld	2191	Private/World.cpp
+class	AWorldSettings	Engine	no data: the body never writes to the archive	2170	Private/WorldSettings.cpp
+class	ULevel	Engine	decoded: LevelExport	2169	Private/Level.cpp
+class	UDataAsset	Engine	no data: flags only	1970	Private/DataAsset.cpp
+class	UNiagaraDataInterfaceCurveBase	Niagara	no data: the body never writes to the archive	1660	Plugins/FX/Niagara/Source/Niagara/Private/NiagaraDataInterfaceCurveBase.cpp
+class	USkinnedMeshComponent	Engine	no data: remote object migration only	1393	Private/Components/SkinnedMeshComponent.cpp
+class	UAnimMontage	Engine	no data: the body never writes to the archive	1329	Private/Animation/AnimMontage.cpp
+class	USkeletalMeshComponent	Engine	legacy: a body setup before REMOVE_SKELETALMESH_COMPONENT_BODYSETUP_SERIALIZATION, in no reference package	1305	Private/Components/SkeletalMeshComponent.cpp
+class	UChildActorComponent	Engine	no data: only when duplicating	1259	Private/Components/ChildActorComponent.cpp
+class	UHierarchicalInstancedStaticMeshComponent	Engine	decoded: ClassSerializers UHierarchicalInstancedStaticMeshComponent	1217	Private/HierarchicalInstancedStaticMesh.cpp
+class	UMaterialFunction	Engine	no data: the body never writes to the archive	1144	Private/Materials/MaterialExpressions.cpp
+class	ALandscapeProxy	Landscape	no data: the body never writes to the archive	1127	Source/Runtime/Landscape/Private/Landscape.cpp
+class	UK2Node_MacroInstance	BlueprintGraph	no data: the body never writes to the archive	1117	Source/Editor/BlueprintGraph/Private/K2Node_MacroInstance.cpp
+class	APackedLevelActor	Engine	decoded: ClassSerializers APackedLevelActor	1044	Private/PackedLevelActor/PackedLevelActor.cpp
+class	USplineMeshComponent	Engine	no data: the body never writes to the archive	961	Private/Components/SplineMeshComponent.cpp
+class	URigVMNode	RigVMDeveloper	no data: the body never writes to the archive	941	Plugins/Runtime/RigVM/Source/RigVMDeveloper/Private/RigVMModel/RigVMNode.cpp
+class	UK2Node_DynamicCast	BlueprintGraph	decoded: EdGraphNodeExport (pure state)	920	Source/Editor/BlueprintGraph/Private/K2Node_DynamicCast.cpp
+class	UWorldPartition	Engine	decoded: NativeClassTails UWorldPartition	917	Private/WorldPartition/WorldPartition.cpp
+class	ULandscapeComponent	Landscape	decoded: ClassSerializers ULandscapeComponent	916	Source/Runtime/Landscape/Private/Landscape.cpp
+class	ULandscapeHeightfieldCollisionComponent	Landscape	decoded: ClassSerializers ULandscapeHeightfieldCollisionComponent	916	Source/Runtime/Landscape/Private/LandscapeCollision.cpp
+class	AWorldDataLayers	Engine	no data: only when duplicating	914	Private/WorldPartition/DataLayer/WorldDataLayers.cpp
+class	ULandscapeTextureHash	Landscape	no data: the body never writes to the archive	910	Source/Runtime/Landscape/Private/LandscapeTextureHash.cpp
+class	ULandscapeHeightmapTextureEdgeFixup	Landscape	decoded: ClassSerializers ULandscapeHeightmapTextureEdgeFixup	902	Source/Runtime/Landscape/Private/LandscapeEdgeFixup.cpp
+class	ULandscapeTextureMipEdgeOverrideFactory	Landscape	decoded: ClassSerializers ULandscapeTextureMipEdgeOverrideFactory	902	Source/Runtime/Landscape/Private/LandscapeTextureStorageProvider.cpp
+class	UObjectRedirector	CoreUObject	decoded: NativeClassTails UObjectRedirector	896	Source/Runtime/CoreUObject/Private/UObject/ObjectRedirector.cpp
+class	UMaterialFunctionInterfaceEditorOnlyData	Engine	no data: the body never writes to the archive	844	Private/Materials/MaterialExpressions.cpp
+class	UAnimInstance	Engine	instance data only: anim instances are transient, and class default objects never run the tail	834	Private/Animation/AnimInstance.cpp
+class	USkeletalMesh	Engine	decoded: ClassSerializers USkeletalMesh	800	Private/SkeletalMesh.cpp
+class	UNiagaraDataInterfaceCurve	Niagara	no data: the body never writes to the archive	785	Plugins/FX/Niagara/Source/Niagara/Private/NiagaraDataInterfaceCurve.cpp
+class	USoundNode	Engine	decoded: NativeClassTails USoundNode	781	Private/SoundNode.cpp
+class	UDynamicMesh	GeometryFramework	decoded: ClassSerializers UDynamicMesh	775	Source/Runtime/GeometryFramework/Private/UDynamicMesh.cpp
+class	UDynamicMeshComponent	GeometryFramework	no data: the body never writes to the archive	764	Source/Runtime/GeometryFramework/Private/Components/DynamicMeshComponent.cpp
+class	UMovieScenePropertyTrack	MovieSceneTracks	no data: the body never writes to the archive	722	Source/Runtime/MovieSceneTracks/Private/Tracks/MovieScenePropertyTrack.cpp
+class	UNiagaraScript	Niagara	decoded: ClassSerializers UNiagaraScript	716	Plugins/FX/Niagara/Source/Niagara/Private/NiagaraScript.cpp
+class	UK2Node_CustomEvent	BlueprintGraph	no data: the body never writes to the archive	705	Source/Editor/BlueprintGraph/Private/K2Node_CustomEvent.cpp
+class	UScriptStruct	CoreUObject	decoded: ScriptStructExport	674	Source/Runtime/CoreUObject/Private/UObject/Class.cpp
+class	UNiagaraSystem	Niagara	decoded: ClassSerializers UNiagaraSystem	662	Plugins/FX/Niagara/Source/Niagara/Private/NiagaraSystem.cpp
+class	UNavArea	NavigationSystem	no data: the body never writes to the archive	641	Source/Runtime/NavigationSystem/Private/NavAreas/NavArea.cpp
+class	UNiagaraEmitter	Niagara	no data: the body never writes to the archive	628	Plugins/FX/Niagara/Source/Niagara/Private/NiagaraEmitter.cpp
+class	UCapsuleComponent	Engine	no data: the body never writes to the archive	624	Private/Components/CapsuleComponent.cpp
+class	UHierarchyElement	DataHierarchyEditor	no data: the body never writes to the archive	603	Source/Editor/DataHierarchyEditor/Private/DataHierarchyViewModelBase.cpp
+class	UFbxSkeletalMeshImportData	UnrealEd	no data: the body never writes to the archive	585	Source/Editor/UnrealEd/Private/Fbx/FbxSkeletalMeshImportData.cpp
+class	UMovementComponent	Engine	no data: the body never writes to the archive	575	Private/Components/MovementComponent.cpp
+class	UCameraComponent	Engine	no data: the body never writes to the archive	569	Private/Camera/CameraComponent.cpp
+class	UNiagaraDataInterfaceColorCurve	Niagara	no data: the body never writes to the archive	538	Plugins/FX/Niagara/Source/Niagara/Private/NiagaraDataInterfaceColorCurve.cpp
+class	UMetaSoundSource	MetasoundEngine	no data: cooked quality settings only when cooked	511	Private/MetasoundSource.cpp
+class	USoundWaveProcedural	Engine	decoded: ClassSerializers USoundWaveProcedural	511	Private/SoundWaveProcedural.cpp
+class	UNiagaraSpriteRendererProperties	Niagara	no data: derived data only when cooked	497	Plugins/FX/Niagara/Source/Niagara/Private/NiagaraSpriteRendererProperties.cpp
+class	UAnimBlueprint	Engine	no data: the body never writes to the archive	468	Private/AnimBlueprint.cpp
+class	UAnimBlueprintGeneratedClass	Engine	no data: the body never writes to the archive	468	Private/Animation/AnimBlueprintGeneratedClass.cpp
+class	UPoseSearchDatabase	PoseSearch	no data: cooked search index only	465	Plugins/Animation/PoseSearch/Source/Runtime/Private/PoseSearchDatabase.cpp
+class	UMaterialExpressionClamp	Engine	no data	462	Private/Materials/MaterialExpressions.cpp
+class	UWidgetBlueprint	UMGEditor	no data: the body never writes to the archive	442	Source/Editor/UMGEditor/Private/WidgetBlueprint.cpp
+class	UWidgetBlueprintGeneratedClass	UMG	no data: the body never writes to the archive	439	Source/Runtime/UMG/Private/WidgetBlueprintGeneratedClass.cpp
+class	APlayerController	Engine	no data: remote object migration only	424	Private/PlayerController.cpp
+class	UK2Node_MakeStruct	BlueprintGraph	no data: the body never writes to the archive	417	Source/Editor/BlueprintGraph/Private/K2Node_MakeStruct.cpp
+class	UInterchangeGenericAnimationPipeline	InterchangePipelines	no data: the body never writes to the archive	414	Plugins/Interchange/Runtime/Source/Pipelines/Private/InterchangeGenericAnimationPipeline.cpp
+class	UInterchangeGenericAssetsPipeline	InterchangePipelines	no data: the body never writes to the archive	414	Plugins/Interchange/Runtime/Source/Pipelines/Private/InterchangeGenericAssetsPipeline.cpp
+class	UInterchangeGenericMaterialPipeline	InterchangePipelines	no data: the body never writes to the archive	414	Plugins/Interchange/Runtime/Source/Pipelines/Private/InterchangeGenericMaterialPipeline.cpp
+class	UAnimGraphNode_Root	AnimGraph	no data: the body never writes to the archive	413	Source/Editor/AnimGraph/Private/AnimGraphNode_Root.cpp
+class	UPoseAsset	Engine	no data: the body never writes to the archive	410	Private/Animation/PoseAsset.cpp
+class	UHierarchyRoot	DataHierarchyEditor	no data	392	Source/Editor/DataHierarchyEditor/Private/DataHierarchyViewModelBase.cpp
+class	URootMotionModifier_Warp	MotionWarping	no data: the body never writes to the archive	391	Plugins/Animation/MotionWarping/Source/MotionWarping/Private/RootMotionModifier.cpp
+class	UK2Node_BreakStruct	BlueprintGraph	no data: the body never writes to the archive	385	Source/Editor/BlueprintGraph/Private/K2Node_BreakStruct.cpp
+class	UNavMovementComponent	Engine	no data: the body never writes to the archive	385	Private/Components/NavMovementComponent.cpp
+class	USoundCue	Engine	decoded: NativeClassTails USoundCue	380	Private/SoundCue.cpp
+class	UProperty	CoreUObject	decoded: PropertyExport	375	Source/Runtime/CoreUObject/Private/UObject/PropertyPrivate.cpp
+class	ACameraActor	Engine	no data: the body never writes to the archive	368	Private/Camera/CameraActor.cpp
+class	UPCGGraph	PCG	no data: the body never writes to the archive	368	Plugins/PCG/Source/PCG/Private/PCGGraph.cpp
+class	UAnimGraphNode_AssetPlayerBase	AnimGraph	no data: the body never writes to the archive	362	Source/Editor/AnimGraph/Private/AnimGraphNode_AssetPlayerBase.cpp
+class	USoundNodeWavePlayer	Engine	decoded: NativeClassTails USoundNodeWavePlayer	356	Private/SoundNodeWavePlayer.cpp
+class	UPhysicsAsset	Engine	decoded: ClassSerializers UPhysicsAsset	351	PhysicsAsset.cpp
+class	UInheritableComponentHandler	Engine	no data: the body never writes to the archive	349	Private/InheritableComponentHandler.cpp
+class	UCineCameraComponent	CinematicCamera	no data: the body never writes to the archive	346	Source/Runtime/CinematicCamera/Private/CineCameraComponent.cpp
+class	UPawnMovementComponent	Engine	no data: the body never writes to the archive	345	Private/Components/PawnMovementComponent.cpp
+class	USkeleton	Engine	decoded: ClassSerializers USkeleton	329	Private/Animation/Skeleton.cpp
+class	UPhysicalMaterial	PhysicsCore	no data: the body never writes to the archive	326	Source/Runtime/PhysicsCore/Private/PhysicalMaterial.cpp
+class	UK2Node_ComponentBoundEvent	BlueprintGraph	no data: the body never writes to the archive	292	Source/Editor/BlueprintGraph/Private/K2Node_ComponentBoundEvent.cpp
+class	UAudioComponent	Engine	no data: reference collection only	290	Private/Components/AudioComponent.cpp
+class	UPCGMetadata	PCG	decoded: ClassSerializers UPCGMetadata	285	Plugins/PCG/Source/PCG/Private/Metadata/PCGMetadata.cpp
+class	UFoliageType	Foliage	no data: the body never writes to the archive	272	Source/Runtime/Foliage/Private/InstancedFoliage.cpp
+class	UMaterialExpressionMakeMaterialAttributes	Engine	no data	270	Private/Materials/MaterialExpressions.cpp
+class	UAnimationModifier	AnimationModifiers	no data: the body never writes to the archive	264	Source/Editor/AnimationModifiers/Private/AnimationModifier.cpp
+class	UCharacterMovementComponent	Engine	no data: remote object migration only	263	Private/Components/CharacterMovementComponent.cpp
+class	UFontFace	Engine	decoded: ClassSerializers UFontFace	249	Private/FontFace.cpp
+class	UNiagaraMeshRendererProperties	Niagara	no data: the body never writes to the archive	249	Plugins/FX/Niagara/Source/Niagara/Private/NiagaraMeshRendererProperties.cpp
+class	UUserDefinedStruct	CoreUObject	decoded: UserDefinedStructExport	241	Source/Runtime/CoreUObject/Private/StructUtils/UserDefinedStruct.cpp
+class	UUserDefinedStructEditorData	UnrealEd	no data: the body never writes to the archive	241	Source/Editor/UnrealEd/Private/UserDefinedStructEditorData.cpp
+class	UPhysicsConstraintTemplate	Engine	no data: the body never writes to the archive	235	PhysicsConstraintTemplate.cpp
+class	UDirectionalLightComponent	Engine	no data: the body never writes to the archive	232	Private/Components/DirectionalLightComponent.cpp
+class	USkyLightComponent	Engine	legacy: a spherical-harmonics irradiance map between SKYLIGHT_MOBILE_IRRADIANCE_MAP and SkyLightRemoveMobileIrradianceMap, in no reference package	226	Private/Components/SkyLightComponent.cpp
+class	UNiagaraDataInterfaceVector2DCurve	Niagara	no data: the body never writes to the archive	222	Plugins/FX/Niagara/Source/Niagara/Private/NiagaraDataInterfaceVector2DCurve.cpp
+class	UGameplayAbility	GameplayAbilities	no data: remote object migration only	221	Plugins/Runtime/GameplayAbilities/Source/GameplayAbilities/Private/Abilities/GameplayAbility.cpp
+class	AWaterBody	Water	no data: the body never writes to the archive	218	Plugins/Experimental/Water/Source/Runtime/Private/WaterBodyActor.cpp
+class	UInterchangeBaseNode	InterchangeCore	decoded: ClassSerializers UInterchangeBaseNode	213	Source/Runtime/Interchange/Core/Private/Nodes/InterchangeBaseNode.cpp
+class	UWaterBodyComponent	Water	no data: reference collection only	211	Plugins/Experimental/Water/Source/Runtime/Private/WaterBodyComponent.cpp
+class	UEnum	CoreUObject	decoded: EnumExport	209	Source/Runtime/CoreUObject/Private/UObject/Enum.cpp
+class	UWaterSplineComponent	Water	no data: the body never writes to the archive	209	Plugins/Experimental/Water/Source/Runtime/Private/WaterSplineComponent.cpp
+class	UAnimGraphNode_SkeletalControlBase	AnimGraph	no data: the body never writes to the archive	204	Source/Editor/AnimGraph/Private/AnimGraphNode_SkeletalControlBase.cpp
+class	UUserDefinedEnum	Engine	decoded: EnumExport	203	Private/UserDefinedEnum.cpp
+class	UGroomBindingAsset	HairStrandsCore	no data: platform data only outside the editor	202	Plugins/Runtime/HairStrands/Source/HairStrandsCore/Private/GroomBindingAsset.cpp
+class	URigVM	RigVM	decoded: RigVMExport	193	Plugins/Runtime/RigVM/Source/RigVM/Private/RigVMCore/RigVM.cpp
+class	UPhysicsConstraintComponent	Engine	no data: reference collection and migration only	188	PhysicsConstraintComponent.cpp
+class	APostProcessVolume	Engine	no data: the body never writes to the archive	186	Private/PostProcessVolume.cpp
+class	UK2Node_AddComponent	BlueprintGraph	no data: the body never writes to the archive	184	Source/Editor/BlueprintGraph/Private/K2Node_AddComponent.cpp
+class	APCGPartitionActor	PCG	no data: the body never writes to the archive	181	Plugins/PCG/Source/PCG/Private/Grid/PCGPartitionActor.cpp
+class	URigVMEdGraph	RigVMDeveloper	no data: the body never writes to the archive	180	Plugins/Runtime/RigVM/Source/RigVMDeveloper/Private/EdGraph/RigVMEdGraph.cpp
+class	URectLightComponent	Engine	no data: the body never writes to the archive	179	Private/Components/RectLightComponent.cpp
+class	USkeletalMeshEditorData	Engine	decoded: ClassSerializers USkeletalMeshEditorData	178	Private/SkeletalMeshEditorData.cpp
+class	UAnimGraphNode_BlendListBase	AnimGraph	no data: the body never writes to the archive	176	Source/Editor/AnimGraph/Private/AnimGraphNode_BlendListBase.cpp
+class	UTimelineTemplate	Engine	no data: the body never writes to the archive	176	Private/TimelineTemplate.cpp
+class	URigVMPin	RigVMDeveloper	no data: the body never writes to the archive	175	Plugins/Runtime/RigVM/Source/RigVMDeveloper/Private/RigVMModel/RigVMPin.cpp
+class	UMaterialExpressionCustom	Engine	no data: code fix-ups on load	169	Private/Materials/MaterialExpressions.cpp
+class	UBlendSpace	Engine	no data: the body never writes to the archive	163	Private/Animation/BlendSpace.cpp
+class	UMovieSceneBoolSection	MovieScene	no data: the body never writes to the archive	162	Source/Runtime/MovieScene/Private/Sections/MovieSceneBoolSection.cpp
+class	URigVMLink	RigVMDeveloper	decoded: RigVMLinkExport	159	Plugins/Runtime/RigVM/Source/RigVMDeveloper/Private/RigVMModel/RigVMLink.cpp
+class	UExponentialHeightFogComponent	Engine	no data: the body never writes to the archive	157	Private/Components/ExponentialHeightFogComponent.cpp
+class	UAnimGraphNode_SequencePlayer	AnimGraph	no data: the body never writes to the archive	156	Source/Editor/AnimGraph/Private/AnimGraphNode_SequencePlayer.cpp
+class	USkyAtmosphereComponent	Engine	decoded: NativeClassTails USkyAtmosphereComponent	156	Private/Components/SkyAtmosphereComponent.cpp
+class	AInstancedFoliageActor	Foliage	decoded: ClassSerializers AInstancedFoliageActor	156	Source/Runtime/Foliage/Private/InstancedFoliage.cpp
+class	UK2Node_GetSubsystem	BlueprintGraph	no data: the body never writes to the archive	155	Source/Editor/BlueprintGraph/Private/K2Node_GetSubsystem.cpp
+class	UAnimStateNodeBase	AnimGraph	no data: the body never writes to the archive	154	Source/Editor/AnimGraph/Private/AnimStateNodeBase.cpp
+class	UFont	Engine	decoded: ClassSerializers UFont	150	Private/Font.cpp
+class	UAnimGraphNode_CustomProperty	AnimGraph	no data: the body never writes to the archive	148	Source/Editor/AnimGraph/Private/AnimGraphNode_CustomProperty.cpp
+class	URigHierarchy	ControlRig	decoded: RigHierarchyExport	144	Plugins/Animation/ControlRig/Source/ControlRig/Private/Rigs/RigHierarchy.cpp
+class	URigVMBlueprintGeneratedClass	RigVM	decoded: NativeClassTails URigVMBlueprintGeneratedClass	134	Plugins/Runtime/RigVM/Source/RigVM/Private/RigVMBlueprintGeneratedClass.cpp
+class	UControlRigBlueprint	ControlRigDeveloper	decoded: NormalExport (IControlRigEditorAssetInterface::Serialize writes the tagged properties)	134	Plugins/Animation/ControlRig/Source/ControlRigDeveloper/Private/ControlRigBlueprintLegacy.cpp
+class	UCommonTextBlock	CommonUI	no data: the body never writes to the archive	131	Plugins/Runtime/CommonUI/Source/CommonUI/Private/CommonTextBlock.cpp
+class	UOptimusNode	OptimusCore	no data: the body never writes to the archive	131	Plugins/Animation/DeformerGraph/Source/OptimusCore/Private/OptimusNode.cpp
+class	USkeletalMeshSocket	Engine	no data: the body never writes to the archive	121	Private/SkeletalMesh.cpp
+class	UCurveLinearColor	Engine	no data: the body never writes to the archive	120	Private/Curves/CurveLinearColor.cpp
+class	UK2Node_SpawnActorFromClass	BlueprintGraph	no data: the body never writes to the archive	116	Source/Editor/BlueprintGraph/Private/K2Node_SpawnActorFromClass.cpp
+class	UNiagaraDataInterfaceVectorCurve	Niagara	no data: the body never writes to the archive	115	Plugins/FX/Niagara/Source/Niagara/Private/NiagaraDataInterfaceVectorCurve.cpp
+class	UStateTreeEditorData	StateTreeEditorModule	no data: the body never writes to the archive	113	Plugins/Runtime/StateTree/Source/StateTreeEditorModule/Private/StateTreeEditorData.cpp
+class	UDistributionVector	Engine	no data	113	Private/Distributions.cpp
+class	UDistributionFloat	Engine	no data	110	Private/Distributions.cpp
+class	UAbilitySystemComponent	GameplayAbilities	no data: remote object migration only	109	Plugins/Runtime/GameplayAbilities/Source/GameplayAbilities/Private/AbilitySystemComponent.cpp
+class	UMaterialFunctionInstance	Engine	no data: the body never writes to the archive	102	Private/Materials/MaterialExpressions.cpp
+class	UControlRigBlueprintGeneratedClass	ControlRig	decoded: NativeClassTails UControlRigBlueprintGeneratedClass	101	Plugins/Animation/ControlRig/Source/ControlRig/Private/ControlRigBlueprintGeneratedClass.cpp
+class	UAnimGraphNode_ControlRig	ControlRigDeveloper	no data: the body never writes to the archive	99	Plugins/Animation/ControlRig/Source/ControlRigDeveloper/Private/AnimGraphNode_ControlRig.cpp
+class	UMaterialExpressionBreakMaterialAttributes	Engine	no data	99	Private/Materials/MaterialExpressions.cpp
+class	UNiagaraRibbonRendererProperties	Niagara	no data	97	Plugins/FX/Niagara/Source/Niagara/Private/NiagaraRibbonRendererProperties.cpp
+class	UMaterialExpressionFeatureLevelSwitch	Engine	no data	96	Private/Materials/MaterialExpressions.cpp
+class	USoundscapeColor	SoundScape	no data: the body never writes to the archive	95	Plugins/Runtime/Soundscape/Source/SoundScape/Private/SoundscapeColor.cpp
+class	UTextureCube	Engine	decoded: ClassSerializers UTextureCube	92	Private/TextureCube.cpp
+class	UGeometryCollection	GeometryCollectionEngine	decoded: ClassSerializers UGeometryCollection	92	Private/GeometryCollection/GeometryCollectionObject.cpp
+class	UGroomAsset	HairStrandsCore	decoded: ClassSerializers UGroomAsset	90	Plugins/Runtime/HairStrands/Source/HairStrandsCore/Private/GroomAsset.cpp
+class	UObjectPropertyBase	CoreUObject	decoded: PropertyExport (legacy UObjectProperty)	79	Source/Runtime/CoreUObject/Private/UObject/PropertyPrivate.cpp
+class	UStructProperty	CoreUObject	decoded: PropertyExport	73	Source/Runtime/CoreUObject/Private/UObject/PropertyPrivate.cpp
+class	ULevelStreaming	Engine	no data: the body never writes to the archive	70	Private/LevelStreaming.cpp
+class	UPCGSurfaceSamplerSettings	PCG	no data: the body never writes to the archive	69	Plugins/PCG/Source/PCG/Private/Elements/PCGSurfaceSampler.cpp
+class	UAIGraph	AIGraph	no data: the body never writes to the archive	68	Source/Editor/AIGraph/Private/AIGraph.cpp
+class	UInputMappingContext	EnhancedInput	no data: the body never writes to the archive	68	Plugins/EnhancedInput/Source/EnhancedInput/Private/InputMappingContext.cpp
+class	UChooserTable	Chooser	no data: the body never writes to the archive	67	Plugins/Chooser/Source/Chooser/Private/Chooser.cpp
+class	UAnimGraphNode_LayeredBoneBlend	AnimGraph	no data: the body never writes to the archive	66	Source/Editor/AnimGraph/Private/AnimGraphNode_LayeredBoneBlend.cpp
+class	UAnimStateTransitionNode	AnimGraph	no data: the body never writes to the archive	65	Source/Editor/AnimGraph/Private/AnimStateTransitionNode.cpp
+class	USubsurfaceProfile	Engine	no data: the body never writes to the archive	65	Private/Rendering/SubsurfaceProfile.cpp
+class	UMovieSceneEventSectionBase	MovieSceneTracks	no data: the body never writes to the archive	61	Source/Runtime/MovieSceneTracks/Private/Sections/MovieSceneEventSectionBase.cpp
+class	UPaperSprite	Paper2D	no data: the body never writes to the archive	59	Plugins/2D/Paper2D/Source/Paper2D/Private/PaperSprite.cpp
+class	UParticleSystem	Engine	no data: the body never writes to the archive	58	Private/Particles/ParticleSystem.cpp
+class	UMovieSceneEventTrack	MovieSceneTracks	no data: the body never writes to the archive	58	Source/Runtime/MovieSceneTracks/Private/Tracks/MovieSceneEventTrack.cpp
+class	URigVMMemoryStorageGeneratorClass	RigVM	decoded: NativeClassTails URigVMMemoryStorageGeneratorClass	56	Plugins/Runtime/RigVM/Source/RigVM/Private/RigVMCore/RigVMMemoryStorage.cpp
+class	UReflectionCaptureComponent	Engine	decoded: ClassSerializers UReflectionCaptureComponent	55	Private/Components/ReflectionCaptureComponent.cpp
+class	UTextureRenderTarget2D	Engine	no data: the body never writes to the archive	55	Private/TextureRenderTarget2D.cpp
+class	UMovieSceneSkeletalAnimationSection	MovieSceneTracks	no data: the body never writes to the archive	55	Source/Runtime/MovieSceneTracks/Private/Sections/MovieSceneSkeletalAnimationSection.cpp
+class	UWorldPartitionRuntimeSpatialHash	Engine	no data: the body never writes to the archive	53	Private/WorldPartition/WorldPartitionRuntimeSpatialHash.cpp
+class	UMovieSceneFolder	MovieScene	no data: the body never writes to the archive	52	Source/Runtime/MovieScene/Private/MovieSceneFolder.cpp
+class	UAnimGraphNode_TwoWayBlend	AnimGraph	no data: the body never writes to the archive	51	Source/Editor/AnimGraph/Private/AnimGraphNode_TwoWayBlend.cpp
+class	UNiagaraDataInterfaceDataChannelRead	Niagara	no data: the body never writes to the archive	51	Plugins/FX/Niagara/Source/Niagara/Private/DataInterface/NiagaraDataInterfaceDataChannelRead.cpp
+class	UBoolProperty	CoreUObject	decoded: PropertyExport	50	Source/Runtime/CoreUObject/Private/UObject/PropertyPrivate.cpp
+class	USoundClass	Engine	decoded: ClassSerializers USoundClass	50	Private/SoundClass.cpp
+class	USoundSubmix	Engine	no data: the body never writes to the archive	48	Private/SoundSubmix.cpp
+class	APCGWorldActor	PCG	no data: the body never writes to the archive	48	Plugins/PCG/Source/PCG/Private/PCGWorldActor.cpp
+class	UIKRetargeter	IKRig	no data: the body never writes to the archive	47	Plugins/Animation/IKRig/Source/IKRig/Private/Retargeter/IKRetargeter.cpp
+class	UPCGLandscapeCache	PCG	decoded: ClassSerializers UPCGLandscapeCache	47	Plugins/PCG/Source/PCG/Private/Grid/PCGLandscapeCache.cpp
+class	UBackgroundBlur	UMG	no data: the body never writes to the archive	47	Source/Runtime/UMG/Private/Components/BackgroundBlur.cpp
+class	USoundModulationPatch	AudioModulation	no data: the body never writes to the archive	45	Plugins/Runtime/AudioModulation/Source/AudioModulation/Private/SoundModulationPatch.cpp
+class	UPostProcessComponent	Engine	no data: the body never writes to the archive	45	Private/Components/PostProcessComponent.cpp
+class	UAvaSequence	AvalancheSequence	no data: the body never writes to the archive	44	Plugins/VirtualProduction/Avalanche/Source/AvalancheSequence/Private/AvaSequence.cpp
+class	AAvaTransitionBehaviorActor	AvalancheTransition	no data: the body never writes to the archive	44	Plugins/VirtualProduction/Avalanche/Source/AvalancheTransition/Private/Behavior/AvaTransitionBehaviorActor.cpp
+class	UDMXLibrary	DMXRuntime	no data: the body never writes to the archive	44	Source/DMXRuntime/Private/Library/DMXLibrary.cpp
+class	UVolumetricCloudComponent	Engine	no data: the body never writes to the archive	44	Private/Components/VolumetricCloudComponent.cpp
+class	URemoteControlExposeRegistry	RemoteControl	no data: the body never writes to the archive	44	Plugins/VirtualProduction/RemoteControl/Source/RemoteControl/Private/RemoteControlExposeRegistry.cpp
+class	URemoteControlPreset	RemoteControl	no data: the body never writes to the archive	44	Plugins/VirtualProduction/RemoteControl/Source/RemoteControl/Private/RemoteControlPreset.cpp
+class	UUAFRigVMAsset	UAF	no data: the body never writes to the archive	44	Plugins/Experimental/UAF/UAF/Source/UAF/Private/AnimNextRigVMAsset.cpp
+class	UAnimGraphNode_ApplyMeshSpaceAdditive	AnimGraph	no data: the body never writes to the archive	43	Source/Editor/AnimGraph/Private/AnimGraphNode_ApplyMeshSpaceAdditive.cpp
+class	ARecastNavMesh	NavigationSystem	decoded: ClassSerializers ARecastNavMesh	42	Source/Runtime/NavigationSystem/Private/NavMesh/RecastNavMesh.cpp
+class	UChaosClothConfig	ChaosCloth	no data: the body never writes to the archive	40	Plugins/ChaosCloth/Source/ChaosCloth/Private/ChaosCloth/ChaosClothConfig.cpp
+class	UChaosClothSharedSimConfig	ChaosCloth	no data: the body never writes to the archive	40	Plugins/ChaosCloth/Source/ChaosCloth/Private/ChaosCloth/ChaosClothConfig.cpp
+class	UClothingAssetCommon	ClothingSystemRuntimeCommon	no data: the body never writes to the archive	40	Source/Runtime/ClothingSystemRuntimeCommon/Private/ClothingAsset.cpp
+class	UMorphTarget	Engine	decoded: ClassSerializers UMorphTarget	40	Private/MorphTarget.cpp
+class	UGeometryCollectionComponent	GeometryCollectionEngine	no data: the body never writes to the archive	40	Private/GeometryCollection/GeometryCollectionComponent.cpp
+class	UParticleModuleRequired	Engine	decoded: ClassSerializers UParticleModuleRequired	39	Private/Particles/ParticleModules.cpp
+class	UParticleEmitter	Engine	no data: the body never writes to the archive	39	Private/Particles/ParticleEmitter.cpp
+class	UIKRigDefinition	IKRig	no data: the body never writes to the archive	39	Plugins/Animation/IKRig/Source/IKRig/Private/Rig/IKRigDefinition.cpp
+class	ULandscapeLayerInfoObject	Landscape	no data: the body never writes to the archive	39	Source/Runtime/Landscape/Private/LandscapeLayerInfoObject.cpp
+class	UChaosVehicleMovementComponent	ChaosVehicles	no data: remote object migration only	38	Plugins/Experimental/ChaosVehiclesPlugin/Source/ChaosVehicles/Private/ChaosVehicleMovementComponent.cpp
+class	UTexture2DArray	Engine	decoded: ClassSerializers UTexture2DArray	38	Texture2DArray.cpp
+class	UBaseCameraObject	GameplayCameras	no data: the body never writes to the archive	38	Plugins/Cameras/GameplayCameras/Source/GameplayCameras/Private/Core/BaseCameraObject.cpp
+class	UNiagaraDataInterfaceTexture	Niagara	decoded: NativeClassTails UNiagaraDataInterfaceTexture	38	Plugins/FX/Niagara/Source/Niagara/Private/NiagaraDataInterfaceTexture.cpp
+class	UDMTextureUV	DynamicMaterial	no data: the body never writes to the archive	36	Plugins/VirtualProduction/DynamicMaterial/Source/DynamicMaterial/Private/Components/DMTextureUV.cpp
+class	UDynamicMaterialModelEditorOnlyData	DynamicMaterialEditor	no data: the body never writes to the archive	36	Plugins/VirtualProduction/DynamicMaterial/Source/DynamicMaterialEditor/Private/Model/DynamicMaterialModelEditorOnlyData.cpp
+class	ULandscapeSplinesComponent	Landscape	decoded: ClassSerializers ULandscapeSplinesComponent	36	Source/Runtime/Landscape/Private/LandscapeSplines.cpp
+class	UMapBuildDataRegistry	Engine	decoded: ClassSerializers UMapBuildDataRegistry	35	Private/MapBuildData.cpp
+class	UMovieSceneVisibilityTrack	MovieSceneTracks	no data: preload only	35	Source/Runtime/MovieSceneTracks/Private/Tracks/MovieSceneVisibilityTrack.cpp
+class	UText3DComponent	Text3D	no data: the body never writes to the archive	35	Plugins/VirtualProduction/Text3D/Source/Text3D/Private/Text3DComponent.cpp
+class	UParticleSystemComponent	Engine	no data	34	Private/Particles/ParticleSystemComponent.cpp
+class	ULandscapeSplineControlPoint	Landscape	no data: the body never writes to the archive	34	Source/Runtime/Landscape/Private/LandscapeSplines.cpp
+class	UPointCloudImpl		decoded: ClassSerializers UPointCloudImpl	34	/mnt/bulk/games/asset-packs/unreal/sample-projects/CitySample/Plugins/RuleProcessor/Source/PointCloud/Public/PointCloudImpl.h
+class	UK2Node_AnimGetter	AnimGraph	no data: the body never writes to the archive	33	Source/Editor/AnimGraph/Private/K2Node_AnimGetter.cpp
+class	UAvaTranslucentPriorityModifierShared	AvalancheModifiers	no data: the body never writes to the archive	33	Plugins/VirtualProduction/Avalanche/Source/AvalancheModifiers/Private/Shared/AvaTranslucentPriorityModifierShared.cpp
+class	ULandscapeSplineSegment	Landscape	no data: the body never writes to the archive	33	Source/Runtime/Landscape/Private/LandscapeSplines.cpp
+class	UUAFRigVMAssetEditorData	UAFUncookedOnly	no data: the body never writes to the archive	31	Plugins/Experimental/UAF/UAF/Source/UAFUncookedOnly/Private/AnimNextRigVMAssetEditorData.cpp
+class	USceneCaptureComponent	Engine	no data: the body never writes to the archive	31	Private/Components/SceneCaptureComponent.cpp
+class	UWorldPartitionStreamingSourceComponent	Engine	no data: the body never writes to the archive	31	Private/Components/WorldPartitionStreamingSourceComponent.cpp
+class	UNiagaraEffectType	Niagara	no data: the body never writes to the archive	28	Plugins/FX/Niagara/Source/Niagara/Private/NiagaraEffectType.cpp
+class	UAnimGraphNode_ApplyAdditive	AnimGraph	no data: the body never writes to the archive	27	Source/Editor/AnimGraph/Private/AnimGraphNode_ApplyAdditive.cpp
+class	UChaosWheeledVehicleMovementComponent	ChaosVehicles	no data: the body never writes to the archive	27	Plugins/Experimental/ChaosVehiclesPlugin/Source/ChaosVehicles/Private/ChaosWheeledVehicleMovementComponent.cpp
+class	UControlRigRuntimeAsset	ControlRig	no data: the body never writes to the archive	27	Plugins/Animation/ControlRig/Source/ControlRig/Private/ControlRigRuntimeAsset.cpp
+class	USkeletalMeshLODSettings	Engine	no data: the body never writes to the archive	27	Private/SkeletalMeshLODSettings.cpp
+class	UModifierComponent	MeshPartitionEditor	no data: the body never writes to the archive	27	Plugins/Experimental/MeshPartition/Source/MeshPartitionEditor/Private/MeshPartitionModifierComponent.cpp
+class	UDNAAsset	RigLogicModule	decoded: ClassSerializers UDNAAsset	27	Plugins/Animation/RigLogic/Source/RigLogicModule/Private/DNAAsset.cpp
+class	UUAFAnimGraph	UAFAnimGraph	decoded: NativeClassTails UUAFAnimGraph	27	Plugins/Experimental/UAF/UAFAnimGraph/Source/UAFAnimGraph/Private/Graph/AnimNextAnimationGraph.cpp
+class	UMetaSoundPatch	MetasoundEngine	no data: FAssetHelper::SerializeToArchive is empty	26	Private/Metasound.cpp
+class	UWidgetComponent	UMG	no data: the body never writes to the archive	26	Source/Runtime/UMG/Private/Components/WidgetComponent.cpp
+class	UScrollBox	UMG	no data: the body never writes to the archive	25	Source/Runtime/UMG/Private/Components/ScrollBox.cpp
+class	USceneCaptureComponent2D	Engine	no data: the body never writes to the archive	25	Private/Components/SceneCaptureComponent.cpp
+class	UFieldSystem	FieldSystemEngine	decoded: ClassSerializers UFieldSystem	25	Private/Field/FieldSystemAsset.cpp
+class	UOptimusComputeGraph	OptimusCore	no data: the body never writes to the archive	25	Plugins/Animation/DeformerGraph/Source/OptimusCore/Private/OptimusComputeGraph.cpp
+class	UComputeGraph	ComputeFramework	decoded: ClassSerializers UComputeGraph	25	Plugins/Runtime/ComputeFramework/Source/ComputeFramework/Private/ComputeGraph.cpp
+class	UOptimusDeformer	OptimusCore	decoded: ClassSerializers UOptimusDeformer	25	Plugins/Animation/DeformerGraph/Source/OptimusCore/Private/OptimusDeformer.cpp
+class	UOptimusNode_DataInterface	OptimusCore	no data: the body never writes to the archive	25	Plugins/Animation/DeformerGraph/Source/OptimusCore/Private/Nodes/OptimusNode_DataInterface.cpp
+class	UAnimGraphNode_PoseDriver	AnimGraph	no data: the body never writes to the archive	24	Source/Editor/AnimGraph/Private/AnimGraphNode_PoseDriver.cpp
+class	UMassVisualizationTrait	MassRepresentation	no data: the body never writes to the archive	24	Plugins/Runtime/MassGameplay/Source/MassRepresentation/Private/MassVisualizationTrait.cpp
+class	UNavLinkCustomComponent	NavigationSystem	no data: the body never writes to the archive	24	Source/Runtime/NavigationSystem/Private/NavLinkCustomComponent.cpp
+class	UNiagaraDataInterfaceGrid2D	Niagara	no data: the body never writes to the archive	24	Plugins/FX/Niagara/Source/Niagara/Private/NiagaraDataInterfaceRW.cpp
+class	UUAFSharedVariablesEntry	UAFUncookedOnly	no data: the body never writes to the archive	24	Plugins/Experimental/UAF/UAF/Source/UAFUncookedOnly/Private/Entries/AnimNextSharedVariablesEntry.cpp
+class	ACEClonerActor	ClonerEffector	no data: the body never writes to the archive	23	Plugins/VirtualProduction/ClonerEffector/Source/ClonerEffector/Private/Cloner/CEClonerActor.cpp
+class	ULightMapTexture2D	Engine	decoded: ClassSerializers ULightMapTexture2D	23	Private/LightMap.cpp
+class	USoundscapePalette	SoundScape	no data: the body never writes to the archive	23	Plugins/Runtime/Soundscape/Source/SoundScape/Private/SoundScapePalette.cpp
+class	UAudioImpulseResponse	Synthesis	no data: the body never writes to the archive	23	Plugins/Runtime/Synthesis/Source/Synthesis/Private/EffectConvolutionReverb.cpp
+class	UK2Node_MathExpression	BlueprintGraph	no data	22	Source/Editor/BlueprintGraph/Private/K2Node_MathExpression.cpp
+class	UStaticMeshSocket	Engine	no data: the body never writes to the archive	22	Private/StaticMesh.cpp
+class	ACEEffectorActor	ClonerEffector	no data: the body never writes to the archive	21	Plugins/VirtualProduction/ClonerEffector/Source/ClonerEffector/Private/Effector/CEEffectorActor.cpp
+class	UByteProperty	CoreUObject	decoded: PropertyExport	21	Source/Runtime/CoreUObject/Private/UObject/PropertyPrivate.cpp
+class	UScaleBox	UMG	no data: the body never writes to the archive	21	Source/Runtime/UMG/Private/Components/ScaleBox.cpp
+class	UAtmosphericFogComponent		decoded: ClassSerializers UAtmosphericFogComponent	20	Private/Atmosphere/AtmosphericFogComponent.cpp
+class	UMovieSceneAudioSection	MovieSceneTracks	no data: the body never writes to the archive	20	Source/Runtime/MovieSceneTracks/Private/Sections/MovieSceneAudioSection.cpp
+class	USmartObjectComponent	SmartObjectsModule	no data: the body never writes to the archive	20	Plugins/Runtime/SmartObjects/Source/SmartObjectsModule/Private/SmartObjectComponent.cpp
+class	UAnimGraphNode_LinkedAnimGraphBase	AnimGraph	no data: the body never writes to the archive	19	Source/Editor/AnimGraph/Private/AnimGraphNode_LinkedAnimGraphBase.cpp
+class	UCommonActionWidget	CommonUI	no data: the body never writes to the archive	19	Plugins/Runtime/CommonUI/Source/CommonUI/Private/CommonActionWidget.cpp
+class	UControlRigComponent	ControlRig	no data: the body never writes to the archive	19	Plugins/Animation/ControlRig/Source/ControlRig/Private/ControlRigComponent.cpp
+class	UMovieSceneDoubleVectorSection	MovieSceneTracks	no data: the body never writes to the archive	19	Source/Runtime/MovieSceneTracks/Private/Sections/MovieSceneVectorSection.cpp
+class	UUAFSharedVariableNode	UAFUncookedOnly	no data: the body never writes to the archive	19	Plugins/Experimental/UAF/UAF/Source/UAFUncookedOnly/Private/AnimNextSharedVariableNode.cpp
+class	UAnimGraphNode_BlendListByEnum	AnimGraph	no data: the body never writes to the archive	18	Source/Editor/AnimGraph/Private/AnimGraphNode_BlendListByEnum.cpp
+class	AGameplayCueNotify_Actor	GameplayAbilities	no data: the body never writes to the archive	18	Plugins/Runtime/GameplayAbilities/Source/GameplayAbilities/Private/GameplayCueNotify_Actor.cpp
+class	ACompiledSection	MeshPartition	no data: the body never writes to the archive	18	Plugins/Experimental/MeshPartition/Source/MeshPartition/Private/MeshPartitionCompiledSection.cpp
+class	UAnimNextVariableEntry	UAFUncookedOnly	no data: the body never writes to the archive	18	Plugins/Experimental/UAF/UAF/Source/UAFUncookedOnly/Private/Entries/AnimNextVariableEntry.cpp
+class	UAnimGraphNode_TwoBoneIK	AnimGraph	no data: the body never writes to the archive	17	Source/Editor/AnimGraph/Private/AnimGraphNode_TwoBoneIK.cpp
+class	UOptimusNode_CustomComputeKernel	OptimusCore	no data: the body never writes to the archive	17	Plugins/Animation/DeformerGraph/Source/OptimusCore/Private/Nodes/OptimusNode_CustomComputeKernel.cpp
+class	UParticleModuleTypeDataMesh	Engine	no data: the body never writes to the archive	16	Private/Particles/ParticleModules.cpp
+class	UGameplayCueNotify_Static	GameplayAbilities	no data: the body never writes to the archive	16	Plugins/Runtime/GameplayAbilities/Source/GameplayAbilities/Private/GameplayCueNotify_Static.cpp
+class	UAnimGraphNode_LinkedAnimLayer	AnimGraph	no data: the body never writes to the archive	15	Source/Editor/AnimGraph/Private/AnimGraphNode_LinkedAnimLayer.cpp
+class	UVolumeTexture	Engine	decoded: ClassSerializers UVolumeTexture	15	Private/VolumeTexture.cpp
+class	UK2Node_InputAxisEvent	BlueprintGraph	no data: the body never writes to the archive	14	Source/Editor/BlueprintGraph/Private/K2Node_InputAxisEvent.cpp
+class	URetargetChainSettings	IKRig	no data: the body never writes to the archive	14	Plugins/Animation/IKRig/Source/IKRig/Private/Retargeter/IKRetargetDeprecated.cpp
+class	URetargetRootSettings	IKRig	no data: the body never writes to the archive	14	Plugins/Animation/IKRig/Source/IKRig/Private/Retargeter/IKRetargetDeprecated.cpp
+class	UAnimGraphNode_IKRig	IKRigDeveloper	no data: the body never writes to the archive	14	Plugins/Animation/IKRig/Source/IKRigDeveloper/Private/AnimGraphNode_IKRig.cpp
+class	UNiagaraStatelessEmitter	Niagara	no data: the body never writes to the archive	14	Plugins/FX/Niagara/Source/Niagara/Private/Stateless/NiagaraStatelessEmitter.cpp
+class	UMetadataFilterRule		no data: migration only	14	/mnt/bulk/games/asset-packs/unreal/sample-projects/CitySample/Plugins/RuleProcessor/Source/PointCloudEditor/Private/Rules/MetadataFilterRule.h
+class	UAnimStateAliasNode	AnimGraph	no data: the body never writes to the archive	13	Source/Editor/AnimGraph/Private/AnimStateAliasNode.cpp
+class	UK2Node_ActorBoundEvent	BlueprintGraph	no data: the body never writes to the archive	13	Source/Editor/BlueprintGraph/Private/K2Node_ActorBoundEvent.cpp
+class	UVariantSet	VariantManagerContent	decoded: ClassSerializers UVariantSet	13	Plugins/Enterprise/VariantManagerContent/Source/VariantManagerContent/Private/VariantSet.cpp
+class	UModularRig	ControlRig	no data: the body never writes to the archive	12	Plugins/Animation/ControlRig/Source/ControlRig/Private/ModularRig.cpp
+class	UDataflow	DataflowEngine	decoded: ClassSerializers UDataflow	12	Private/Dataflow/DataflowObject.cpp
+class	UDataflowEdNode	DataflowEngine	decoded: ClassSerializers UDataflowEdNode	12	Private/Dataflow/DataflowEdNode.cpp
+class	UFbxSceneImportData	UnrealEd	decoded: ClassSerializers UFbxSceneImportData	12	Source/Editor/UnrealEd/Private/Fbx/FbxSceneImportData.cpp
+class	UAnimGraphNode_BlendStack_Base	BlendStackEditor	no data: the body never writes to the archive	11	Plugins/Animation/BlendStack/Source/Editor/Private/AnimGraphNode_BlendStack.cpp
+class	UVariant	VariantManagerContent	decoded: ClassSerializers UVariant	11	Plugins/Enterprise/VariantManagerContent/Source/VariantManagerContent/Private/Variant.cpp
+class	USubmixEffectDynamicsProcessorPreset	AudioMixer	no data: migration only	10	Source/Runtime/AudioMixer/Private/Effects/AudioMixerSubmixEffectDynamicsProcessor.cpp
+class	UChaosCache	ChaosCaching	no data: the body never writes to the archive	10	Plugins/Experimental/ChaosCaching/Source/ChaosCaching/Private/Chaos/ChaosCache.cpp
+class	UArrayProperty	CoreUObject	decoded: PropertyExport	10	Source/Runtime/CoreUObject/Private/UObject/PropertyPrivate.cpp
+class	UMaterialExpressionSwitch	Engine	no data: versions only	10	Private/Materials/MaterialExpressions.cpp
+class	UMLDeformerAsset	MLDeformerFramework	no data: the body never writes to the archive	10	Plugins/Animation/MLDeformer/MLDeformerFramework/Source/MLDeformerFramework/Private/MLDeformerAsset.cpp
+class	UMLDeformerMorphModel	MLDeformerFramework	decoded: ClassSerializers UMLDeformerMorphModel	10	Plugins/Animation/MLDeformer/MLDeformerFramework/Source/MLDeformerFramework/Private/MLDeformerMorphModel.cpp
+class	UMLDeformerModel	MLDeformerFramework	no data: the body never writes to the archive	10	Plugins/Animation/MLDeformer/MLDeformerFramework/Source/MLDeformerFramework/Private/MLDeformerModel.cpp
+class	UMLDeformerMorphModelInputInfo	MLDeformerFramework	no data: the body never writes to the archive	10	Plugins/Animation/MLDeformer/MLDeformerFramework/Source/MLDeformerFramework/Private/MLDeformerMorphModelInputInfo.cpp
+class	UCommonRichTextBlock	CommonUI	no data: the body never writes to the archive	9	Plugins/Runtime/CommonUI/Source/CommonUI/Private/CommonRichTextBlock.cpp
+class	UNNEModelData	NNE	decoded: ClassSerializers UNNEModelData	9	Source/Runtime/NNE/Private/NNEModelData.cpp
+class	URuntimeVirtualTextureComponent	Engine	no data: the body never writes to the archive	8	Private/Components/RuntimeVirtualTextureComponent.cpp
+class	ARuntimeVirtualTextureVolume	Engine	no data: the body never writes to the archive	8	Private/VT/RuntimeVirtualTextureVolume.cpp
+class	UProxyAsset	ProxyTable	no data: the body never writes to the archive	8	Plugins/Chooser/Source/ProxyTable/Private/ProxyAsset.cpp
+class	USmartObjectDefinition	SmartObjectsModule	no data: the body never writes to the archive	8	Plugins/Runtime/SmartObjects/Source/SmartObjectsModule/Private/SmartObjectDefinition.cpp
+class	UAnimGraphNode_LookAt	AnimGraph	no data: the body never writes to the archive	7	Source/Editor/AnimGraph/Private/AnimGraphNode_LookAt.cpp
+class	UComboBoxString	UMG	no data: the body never writes to the archive	7	Source/Runtime/UMG/Private/Components/ComboBoxString.cpp
+class	UCommonNumericTextBlock	CommonUI	no data: the body never writes to the archive	7	Plugins/Runtime/CommonUI/Source/CommonUI/Private/CommonNumericTextBlock.cpp
+class	UStringTable	Engine	decoded: StringTableExport	7	Private/Internationalization/StringTable.cpp
+class	UBaseMediaSource	MediaAssets	decoded: ClassSerializers UBaseMediaSource	7	Source/Runtime/MediaAssets/Private/Assets/BaseMediaSource.cpp
+class	UMaterialExpressionLandscapeLayerBlend	Landscape	no data	7	Source/Runtime/Landscape/Private/Materials/MaterialExpressionLandscapeLayerBlend.cpp
+class	UMediaFrameworkWorldSettingsAssetUserData	MediaFrameworkUtilitiesEditor	no data: the body never writes to the archive	7	Plugins/Media/MediaFrameworkUtilities/Source/MediaFrameworkUtilitiesEditor/Private/MediaFrameworkWorldSettingsAssetUserData.cpp
+class	URecastNavMeshDataChunk	NavigationSystem	decoded: ClassSerializers URecastNavMeshDataChunk	7	Source/Runtime/NavigationSystem/Private/NavMesh/RecastNavMeshDataChunk.cpp
+class	UNeuralMorphModel	NeuralMorphModel	no data: the body never writes to the archive	7	Plugins/Animation/MLDeformer/NeuralMorphModel/Source/NeuralMorphModel/Private/NeuralMorphModel.cpp
+class	ULevelVariantSets	VariantManagerContent	no data: the body never writes to the archive	7	Plugins/Enterprise/VariantManagerContent/Source/VariantManagerContent/Private/LevelVariantSets.cpp
+class	UAnimGraphNode_Fabrik	AnimGraph	no data: the body never writes to the archive	6	Source/Editor/AnimGraph/Private/AnimGraphNode_Fabrik.cpp
+class	UEditableTextBox	UMG	no data: the body never writes to the archive	6	Source/Runtime/UMG/Private/Components/EditableTextBox.cpp
+class	UMeshPartitionCollisionComponent	MeshPartition	decoded: ClassSerializers UMeshPartitionCollisionComponent	6	Plugins/Experimental/MeshPartition/Source/MeshPartition/Private/MeshPartitionCollisionComponent.cpp
+class	UNiagaraVolumeRendererProperties	Niagara	no data: the body never writes to the archive	6	Plugins/FX/Niagara/Source/Niagara/Private/NiagaraVolumeRendererProperties.cpp
+class	UZoneShapeComponent	ZoneGraph	no data: the body never writes to the archive	6	Plugins/Runtime/ZoneGraph/Source/ZoneGraph/Private/ZoneShapeComponent.cpp
+class	UAnimGraphNode_DeadBlending	AnimGraph	no data: the body never writes to the archive	5	Source/Editor/AnimGraph/Private/AnimGraphNode_DeadBlending.cpp
+class	UAnimGraphNode_PoseBlendNode	AnimGraph	no data: the body never writes to the archive	5	Source/Editor/AnimGraph/Private/AnimGraphNode_PoseBlendNode.cpp
+class	USynthComponent	AudioMixer	no data: the body never writes to the archive	5	Source/Runtime/AudioMixer/Private/Components/SynthComponent.cpp
+class	AChaosCacheManager	ChaosCaching	no data: PostSerialize migration	5	Plugins/Experimental/ChaosCaching/Source/ChaosCaching/Private/Chaos/CacheManagerActor.cpp
+class	UAnimCurveCompressionCodec	Engine	decoded: ClassSerializers UAnimCurveCompressionCodec	5	Private/Animation/AnimCurveCompressionCodec.cpp
+class	UPinBoneOp	IKRig	no data: the body never writes to the archive	5	Plugins/Animation/IKRig/Source/IKRig/Private/Retargeter/RetargetOps/PinBoneOp.cpp
+class	UPaperFlipbook	Paper2D	no data: the body never writes to the archive	5	Plugins/2D/Paper2D/Source/Paper2D/Private/PaperFlipbook.cpp
+class	UUAFComponent	UAF	no data: the body never writes to the archive	5	Plugins/Experimental/UAF/UAF/Source/UAF/Private/Component/AnimNextComponent.cpp
+class	UPropertyValue	VariantManagerContent	decoded: ClassSerializers UPropertyValue	5	Plugins/Enterprise/VariantManagerContent/Source/VariantManagerContent/Private/PropertyValue.cpp
+class	UAnimGraphNode_LinkedAnimGraph	AnimGraph	no data: the body never writes to the archive	4	Source/Editor/AnimGraph/Private/AnimGraphNode_LinkedAnimGraph.cpp
+class	UAnimGraphNode_RotationOffsetBlendSpace	AnimGraph	no data: the body never writes to the archive	4	Source/Editor/AnimGraph/Private/AnimGraphNode_RotationOffsetBlendSpace.cpp
+class	USceneStateBlueprint	SceneStateBlueprint	no data: the body never writes to the archive	4	Plugins/VirtualProduction/SceneState/Source/SceneStateBlueprint/Private/SceneStateBlueprint.cpp
+class	UDelegateProperty	CoreUObject	decoded: PropertyExport	4	Source/Runtime/CoreUObject/Private/UObject/PropertyPrivate.cpp
+class	UForceFeedbackComponent	Engine	no data: reference collection only	4	Private/Components/ForceFeedbackComponent.cpp
+class	UTextureCubeArray	Engine	decoded: ClassSerializers UTextureCubeArray	4	Private/TextureCubeArray.cpp
+class	UCameraAsset	GameplayCameras	no data: the body never writes to the archive	4	Plugins/Cameras/GameplayCameras/Source/GameplayCameras/Private/Core/CameraAsset.cpp
+class	UMovieSceneGeometryCacheSection	GeometryCacheTracks	no data: the body never writes to the archive	4	Plugins/Runtime/GeometryCache/Source/GeometryCacheTracks/Private/MovieSceneGeometryCacheSection.cpp
+class	URemeshModifier	MeshPartitionEditor	no data: the body never writes to the archive	4	Plugins/Experimental/MeshPartition/Source/MeshPartitionEditor/Private/Modifiers/MeshPartitionRemeshModifier.cpp
+class	UTexturePatchModifier	MeshPartitionEditor	no data: the body never writes to the archive	4	Plugins/Experimental/MeshPartition/Source/MeshPartitionEditor/Private/Modifiers/MeshPartitionTexturePatchModifier.cpp
+class	UNiagaraDecalRendererProperties	Niagara	no data: the body never writes to the archive	4	Plugins/FX/Niagara/Source/Niagara/Private/NiagaraDecalRendererProperties.cpp
+class	UAnimGraphNode_BlendStack	BlendStackEditor	no data: the body never writes to the archive	3	Plugins/Animation/BlendStack/Source/Editor/Private/AnimGraphNode_BlendStack.cpp
+class	UAnimGraphNode_ChooserPlayer	ChooserUncooked	no data: the body never writes to the archive	3	Plugins/Chooser/Source/ChooserUncooked/Private/AnimGraphNode_ChooserPlayer.cpp
+class	UInterfaceProperty	CoreUObject	decoded: PropertyExport	3	Source/Runtime/CoreUObject/Private/UObject/PropertyPrivate.cpp
+class	ASceneCapture	Engine	no data: the body never writes to the archive	3	Private/Components/SceneCaptureComponent.cpp
+class	UVirtualTextureBuilder	Engine	no data: the body never writes to the archive	3	Private/VT/VirtualTextureBuilder.cpp
+class	UGeometryCache	GeometryCache	decoded: ClassSerializers UGeometryCache	3	Plugins/Runtime/GeometryCache/Source/GeometryCache/Private/GeometryCache.cpp
+class	UGeometryCacheTrackStreamable	GeometryCache	decoded: ClassSerializers UGeometryCacheTrackStreamable	3	Plugins/Runtime/GeometryCache/Source/GeometryCache/Private/GeometryCacheTrackStreamable.cpp
+class	UGeometryCacheTrack	GeometryCache	decoded: ClassSerializers UGeometryCacheTrack	3	Plugins/Runtime/GeometryCache/Source/GeometryCache/Private/GeometryCacheTrack.cpp
+class	UMovieSceneFloatVectorSection	MovieSceneTracks	no data: the body never writes to the archive	3	Source/Runtime/MovieSceneTracks/Private/Sections/MovieSceneVectorSection.cpp
+class	UNearestNeighborModel	NearestNeighborModel	no data: the body never writes to the archive	3	Plugins/Animation/MLDeformer/NearestNeighborModel/Source/NearestNeighborModel/Private/NearestNeighborModel.cpp
+class	UDNA	RigLogicModule	decoded: ClassSerializers UDNA	3	Plugins/Animation/RigLogic/Source/RigLogicModule/Private/DNA.cpp
+class	UUAFSystem	UAF	decoded: ClassSerializers UUAFSystem	3	Plugins/Experimental/UAF/UAF/Source/UAF/Private/Module/AnimNextModule.cpp
+class	UNamedSlot	UMG	no data: the body never writes to the archive	3	Source/Runtime/UMG/Private/Components/NamedSlot.cpp
+class	UVariantObjectBinding	VariantManagerContent	no data: the body never writes to the archive	3	Plugins/Enterprise/VariantManagerContent/Source/VariantManagerContent/Private/VariantObjectBinding.cpp
+class	AWaterBrushManager	WaterEditor	no data: the body never writes to the archive	3	Plugins/Experimental/Water/Source/Editor/Private/WaterBrushManager.cpp
+class	ADaySequenceActor	DaySequence	no data: the body never writes to the archive	2	Plugins/Experimental/DaySequence/Source/DaySequence/Private/DaySequenceActor.cpp
+class	UClothConfigNv	ClothingSystemRuntimeNv	no data: the body never writes to the archive	2	Source/Runtime/ClothingSystemRuntimeNv/Private/ClothConfigNv.cpp
+class	UAnimNotifyState_IKWindow	ContextualAnimation	no data: the body never writes to the archive	2	Plugins/Experimental/Animation/ContextualAnimation/Source/ContextualAnimation/Private/AnimNotifyState_IKWindow.cpp
+class	UMulticastDelegateProperty	CoreUObject	decoded: PropertyExport	2	Source/Runtime/CoreUObject/Private/UObject/PropertyPrivate.cpp
+class	UCurveExpressionsDataAsset	CurveExpression	decoded: ClassSerializers UCurveExpressionsDataAsset	2	Plugins/Experimental/Animation/CurveExpression/Source/Runtime/Private/CurveExpressionsDataAsset.cpp
+class	UCompositeDataTable	Engine	no data: the body never writes to the archive	2	Private/CompositeDataTable.cpp
+class	UCurveTable	Engine	decoded: ClassSerializers UCurveTable	2	Private/CurveTable.cpp
+class	UModelComponent	Engine	decoded: ClassSerializers UModelComponent	2	Private/Components/ModelComponent.cpp
+class	UPoseWatch	Engine	no data: the body never writes to the archive	2	PoseWatch.cpp
+class	USubUVAnimation	Engine	decoded: ClassSerializers USubUVAnimation	2	Private/Particles/SubUVAnimation.cpp
+class	UFastGeoWorldPartitionRuntimeCellTransformer	FastGeoStreaming	no data: only when duplicating for PIE	2	Plugins/Experimental/FastGeoStreaming/Source/FastGeoStreaming/Private/FastGeoWorldPartitionRuntimeCellTransformer.cpp
+class	UMeshPartitionDefinition	MeshPartition	no data: the body never writes to the archive	2	Plugins/Experimental/MeshPartition/Source/MeshPartition/Private/MeshPartitionDefinition.cpp
+class	UProjectMeshLayersModifier	MeshPartitionEditor	no data: the body never writes to the archive	2	Plugins/Experimental/MeshPartition/Source/MeshPartitionEditor/Private/Modifiers/MeshPartitionProjectSculptLayersModifier.cpp
+class	UMVVMBlueprintView	ModelViewViewModelBlueprint	no data: the body never writes to the archive	2	Plugins/Runtime/ModelViewViewModel/Source/ModelViewViewModelBlueprint/Private/MVVMBlueprintView.cpp
+class	UMoviePipelineExecutorJob	MovieRenderPipelineCore	no data: the body never writes to the archive	2	Plugins/MovieScene/MovieRenderPipeline/Source/MovieRenderPipelineCore/Private/MoviePipelineQueue.cpp
+class	UK2Node_GetSequenceBinding	MovieSceneTools	no data: the body never writes to the archive	2	Source/Editor/MovieSceneTools/Private/K2Node_GetSequenceBinding.cpp
+class	UMovieSceneDynamicBindingBlueprintExtension	MovieSceneTools	no data: the body never writes to the archive	2	Source/Editor/MovieSceneTools/Private/MovieSceneDynamicBindingBlueprintExtension.cpp
+class	UPaperFlipbookComponent	Paper2D	no data: the body never writes to the archive	2	Plugins/2D/Paper2D/Source/Paper2D/Private/PaperFlipbookComponent.cpp
+class	UBuoyancyComponent	Water	no data: the body never writes to the archive	2	Plugins/Experimental/Water/Source/Runtime/Private/BuoyancyComponent.cpp
+class	AWaterBodyExclusionVolume	Water	no data: the body never writes to the archive	2	Plugins/Experimental/Water/Source/Runtime/Private/WaterBodyExclusionVolume.cpp
+class	UAnimGraphNode_Trail	AnimGraph	no data: the body never writes to the archive	1	Source/Editor/AnimGraph/Private/AnimGraphNode_Trail.cpp
+class	UAvaExtrudeModifier	AvalancheModifiers	no data: the body never writes to the archive	1	Plugins/VirtualProduction/Avalanche/Source/AvalancheModifiers/Private/Modifiers/AvaExtrudeModifier.cpp
+class	UCommonLoadGuard	CommonUI	no data: the body never writes to the archive	1	Plugins/Runtime/CommonUI/Source/CommonUI/Private/CommonLoadGuard.cpp
+class	UClassProperty	CoreUObject	decoded: PropertyExport	1	Source/Runtime/CoreUObject/Private/UObject/PropertyPrivate.cpp
+class	UEnumProperty	CoreUObject	decoded: PropertyExport	1	Source/Runtime/CoreUObject/Private/UObject/PropertyPrivate.cpp
+class	UMapProperty	CoreUObject	decoded: PropertyExport	1	Source/Runtime/CoreUObject/Private/UObject/PropertyPrivate.cpp
+class	UInstancedSkinnedMeshComponent	Engine	decoded: ClassSerializers UInstancedSkinnedMeshComponent	1	Private/Components/InstancedSkinnedMeshComponent.cpp
+class	USceneCaptureComponentCube	Engine	no data: the body never writes to the archive	1	Private/Components/SceneCaptureComponent.cpp
+class	USoundNodeEnveloper	Engine	no data: the body never writes to the archive	1	Private/SoundNodeEnveloper.cpp
+class	ASpatialHashRuntimeGridInfo	Engine	no data: the body never writes to the archive	1	Private/WorldPartition/WorldPartitionRuntimeSpatialHash.cpp
+class	UVectorFieldStatic	Engine	decoded: ClassSerializers UVectorFieldStatic	1	Private/VectorField.cpp
+class	UEnhancedInputUserSettings	EnhancedInput	instance data only: settings objects are saved to save games, and class default objects never run the tail	1	Plugins/EnhancedInput/Source/EnhancedInput/Private/UserSettings/EnhancedInputUserSettings.cpp
+class	UEnhancedPlayerMappableKeyProfile	EnhancedInput	no data: the body never writes to the archive	1	Plugins/EnhancedInput/Source/EnhancedInput/Private/UserSettings/EnhancedInputUserSettings.cpp
+class	UImgMediaSource	ImgMedia	no data: the body never writes to the archive	1	Plugins/Media/ImgMedia/Source/ImgMedia/Private/Assets/ImgMediaSource.cpp
+class	USmartObjectZoneAnnotations	MassSmartObjects	no data: the body never writes to the archive	1	Plugins/Runtime/MassGameplay/Source/MassSmartObjects/Private/SmartObjectZoneAnnotations.cpp
+class	UWaterModifier	MeshPartitionWater	no data: the body never writes to the archive	1	Plugins/Experimental/MeshPartitionWater/Source/MeshPartitionWater/Private/MeshPartitionWaterModifier.cpp
+class	UNiagaraSimCache	Niagara	decoded: ClassSerializers UNiagaraSimCache	1	Plugins/FX/Niagara/Source/Niagara/Private/NiagaraSimCache.cpp
+class	UPaperSpriteComponent	Paper2D	no data: the body never writes to the archive	1	Plugins/2D/Paper2D/Source/Paper2D/Private/PaperSpriteComponent.cpp
+class	UMultiLineEditableTextBox	UMG	no data: the body never writes to the archive	1	Source/Runtime/UMG/Private/Components/MultiLineEditableTextBox.cpp
+class	UWaveTableBank	WaveTable	no data: the body never writes to the archive	1	Plugins/Runtime/WaveTable/Source/WaveTable/Private/WaveTableBank.cpp
+class	UPCGPolygon2DData	PCG	decoded: ClassSerializers UPCGPolygon2DData	1	Plugins/PCG/Source/PCG/Private/Data/PCGPolygon2DData.cpp
+struct	FGuid	WithSerializer,WithStructuredSerializer	decoded: GuidPropertyData	418047	Source/Runtime/CoreUObject/Private/UObject/Property.cpp
+struct	FVector	core	decoded: VectorPropertyData	357889	
+struct	FRotator	core	decoded: RotatorPropertyData	262816	
+struct	FLinearColor	WithSerializer,WithStructuredSerializer	decoded: LinearColorPropertyData	38304	Source/Runtime/CoreUObject/Private/UObject/Property.cpp
+struct	FPerPlatformFloat	WithSerializer	decoded: PerPlatformFloatPropertyData	32814	Source/Runtime/CoreUObject/Public/UObject/PerPlatformProperties.h
+struct	FBox	core	decoded: BoxPropertyData	28719	
+struct	FQuat	core	decoded: QuatPropertyData	26895	
+struct	FTransform	core	tagged: WithSerializer is commented out and FTransform is not immutable (Property.cpp, NoExportTypes.h)	25707	
+struct	FIntPoint	core	decoded: IntPointPropertyData	20836	
+struct	FVector4	core	decoded: Vector4PropertyData	19973	
+struct	FSoftObjectPath	WithStructuredSerializer	decoded: SoftObjectPathPropertyData	17756	Source/Runtime/CoreUObject/Public/UObject/SoftObjectPath.h
+struct	FColor	WithSerializer	decoded: ColorPropertyData	11998	Source/Runtime/CoreUObject/Private/UObject/Property.cpp
+struct	FFrameRate	WithSerializer	tagged: WithSerializer is commented out (Property.cpp)	10428	Source/Runtime/CoreUObject/Private/UObject/Property.cpp
+struct	FRichCurveKey	WithSerializer	decoded: RichCurveKeyPropertyData	7794	Classes/Curves/RichCurve.h
+struct	FMovieSceneFrameRange	WithSerializer	decoded: MovieSceneFrameRangePropertyData	7520	Source/Runtime/MovieScene/Public/MovieSceneFrameMigration.h
+struct	FMovieSceneFloatChannel	WithSerializer	decoded: MovieSceneFloatChannelPropertyData	7450	Source/Runtime/MovieScene/Public/Channels/MovieSceneFloatChannel.h
+struct	FFloatCurve	WithSerializer	tagged: FAnimCurveBase::Serialize returns false	7393	Public/Animation/AnimCurveTypes.h
+struct	FVector2D	core	decoded: Vector2DPropertyData	6627	
+struct	FAnimNotifyEvent	WithSerializer	no data: the body never writes to the archive	5678	Public/Animation/AnimTypes.h
+struct	FSpline	WithSerializer	decoded: SplinePropertyData	3505	Classes/Curves/Spline.h
+struct	FExpressionInput	WithSerializer	decoded: ExpressionInputPropertyData	3460	Public/MaterialExpressionIO.h
+struct	FInstancedPropertyBag	WithSerializer	decoded: InstancedPropertyBagPropertyData	3255	Source/Runtime/CoreUObject/Public/StructUtils/PropertyBag.h
+struct	FColorMaterialInput	WithSerializer	decoded: ColorMaterialInputPropertyData	2798	Public/MaterialExpressionIO.h
+struct	FEdGraphPinType	WithSerializer	decoded: EdGraphPin	2480	Classes/EdGraph/EdGraphPin.h
+struct	FScalarMaterialInput	WithSerializer	decoded: ScalarMaterialInputPropertyData	2466	Public/MaterialExpressionIO.h
+struct	FType	core	not a struct: macro parameter in StateTreeTypes.h, ChaosVD wrappers	2439	
+struct	FSoftClassPath	WithSerializer	decoded: SoftClassPathPropertyData	2176	Source/Runtime/CoreUObject/Public/UObject/SoftObjectPath.h
+struct	FNiagaraVariableWithOffset	WithSerializer	decoded: NiagaraVariableWithOffsetPropertyData	1944	Plugins/FX/Niagara/Source/Niagara/Public/NiagaraParameterStore.h
+struct	FNiagaraVariable	WithSerializer	decoded: NiagaraVariablePropertyData	1937	Plugins/FX/Niagara/Source/Niagara/Public/NiagaraTypes.h
+struct	FVector3f	WithSerializer	decoded: Vector3fPropertyData	1854	Source/Runtime/CoreUObject/Private/UObject/Property.cpp
+struct	FVectorMaterialInput	WithSerializer	decoded: VectorMaterialInputPropertyData	1607	Public/MaterialExpressionIO.h
+struct	FVector4d	core	decoded: Vector4dPropertyData	1600	
+struct	FDeprecateSlateVector2D	WithStructuredSerializer	decoded: DeprecateSlateVector2DPropertyData	1558	Source/Runtime/SlateCore/Public/Types/SlateVector2.h
+struct	FPerPlatformInt	WithSerializer	decoded: PerPlatformIntPropertyData	1405	Source/Runtime/CoreUObject/Public/UObject/PerPlatformProperties.h
+struct	FQuat4f	WithSerializer	decoded: Quat4fPropertyData	1380	Source/Runtime/CoreUObject/Private/UObject/Property.cpp
+struct	FNiagaraVariableBase	WithSerializer	decoded: NiagaraVariableBasePropertyData	1265	Plugins/FX/Niagara/Source/Niagara/Public/NiagaraTypes.h
+struct	FInstancedStruct	WithSerializer	decoded: InstancedStructPropertyData	1129	Source/Runtime/CoreUObject/Public/StructUtils/InstancedStruct.h
+struct	FRawAnimSequenceTrack	WithSerializer	decoded: RawAnimSequenceTrackPropertyData	1083	Public/Animation/AnimTypes.h
+struct	FVector2MaterialInput	WithSerializer	decoded: Vector2MaterialInputPropertyData	988	Public/MaterialExpressionIO.h
+struct	FAlphaBlend	WithSerializer,WithStructuredSerializer	no data: the body never writes to the archive	890	Public/AlphaBlend.h
+struct	FPlane	core	decoded: PlanePropertyData	759	
+struct	FVector4f	WithSerializer	decoded: Vector4fPropertyData	700	Source/Runtime/CoreUObject/Private/UObject/Property.cpp
+struct	FSkeletalMeshSamplingLODBuiltData	WithSerializer	decoded: SkeletalMeshSamplingLODBuiltDataPropertyData	663	SkeletalMeshSampling.h
+struct	FSmartName	WithSerializer	decoded: SmartNamePropertyData	653	Classes/Animation/SmartName.h
+struct	FVector2f	WithSerializer	decoded: Vector2fPropertyData	650	Source/Runtime/CoreUObject/Private/UObject/Property.cpp
+struct	FNiagaraTypeDefinition	WithSerializer	tagged: writes its tagged properties	629	Plugins/FX/Niagara/Source/Niagara/Public/NiagaraTypes.h
+struct	FMaterialCachedExpressionData	WithSerializer	no data: the body never writes to the archive	596	Public/MaterialCachedData.h
+struct	FStructType	core	not a struct: macro parameter in UAFBindableTypes.h	571	
+struct	FTimeline	WithSerializer	no data: the body never writes to the archive	546	Classes/Components/TimelineComponent.h
+struct	FMaterialAttributesInput	WithSerializer	decoded: MaterialAttributesInputPropertyData	539	Public/MaterialExpressionIO.h
+struct	FAttributeCurve	WithSerializer	decoded: AttributeCurvePropertyData	455	Classes/Animation/AttributeCurve.h
+struct	FVMExternalFunctionBindingInfo	WithSerializer	tagged: writes its tagged properties	442	Plugins/FX/Niagara/Source/Niagara/Public/NiagaraCommon.h
+struct	FAnimationAttributeIdentifier	WithSerializer	decoded: AnimationAttributeIdentifierPropertyData	418	Classes/Animation/AnimData/AttributeIdentifier.h
+struct	FConstraintInstance	WithSerializer	no data: the body never writes to the archive	414	ConstraintInstance.h
+struct	FMaterialOverrideNanite	WithSerializer	decoded: MaterialOverrideNanitePropertyData	410	Public/Materials/MaterialOverrideNanite.h
+struct	FPoseDataContainer	WithSerializer	no data: the body never writes to the archive	408	Classes/Animation/PoseAsset.h
+struct	FFrameNumber	WithSerializer	decoded: FrameNumberPropertyData	369	Source/Runtime/CoreUObject/Private/UObject/Property.cpp
+struct	FAnimSyncMarker	WithSerializer	tagged: writes its tagged properties	369	Public/Animation/AnimTypes.h
+struct	FPostProcessSettings	WithSerializer	no data: the body never writes to the archive	356	Scene.h
+struct	FGameplayTagContainer	WithStructuredSerializer	decoded: GameplayTagContainerPropertyData	326	Source/Runtime/GameplayTags/Classes/GameplayTagContainer.h
+struct	FIntVector	core	decoded: IntVectorPropertyData	323	
+struct	FPerQualityLevelInt	WithSerializer	decoded: PerQualityLevelIntPropertyData	277	Public/PerQualityLevelProperties.h
+struct	FNiagaraDataInterfaceGPUParamInfo	WithSerializer	decoded: NiagaraDataInterfaceGPUParamInfoPropertyData	270	Plugins/FX/Niagara/Source/NiagaraShader/Public/NiagaraShared.h
+struct	FPerQualityLevelFloat	WithSerializer	decoded: PerQualityLevelFloatPropertyData	263	Public/PerQualityLevelProperties.h
+struct	FInputAlphaBoolBlend	WithSerializer,WithStructuredSerializer	no data: the body never writes to the archive	225	Classes/Animation/InputScaleBias.h
+struct	FMovieSceneDoubleChannel	WithSerializer	decoded: MovieSceneDoubleChannelPropertyData	214	Source/Runtime/MovieScene/Public/Channels/MovieSceneDoubleChannel.h
+struct	FPCGPoint	WithStructuredSerializer	decoded: PCGPointPropertyData	191	Plugins/PCG/Source/PCG/Public/PCGPoint.h
+struct	FUniversalObjectLocatorFragment	WithSerializer	decoded: UniversalObjectLocatorFragmentPropertyData	185	Source/Runtime/UniversalObjectLocator/Public/UniversalObjectLocatorFragment.h
+struct	FPerPlatformFrameRate	WithSerializer	decoded: PerPlatformFrameRatePropertyData	185	Source/Runtime/CoreUObject/Public/UObject/PerPlatformProperties.h
+struct	FVectorCurve	WithSerializer	tagged: FAnimCurveBase::Serialize returns false	175	Public/Animation/AnimCurveTypes.h
+struct	FDateTime	WithSerializer	decoded: DateTimePropertyData	156	Source/Runtime/CoreUObject/Private/UObject/Property.cpp
+struct	FFontData	WithSerializer	decoded: FontDataPropertyData	141	Source/Runtime/SlateCore/Public/Fonts/CompositeFont.h
+struct	FHierarchicalSimplification	WithSerializer	no data: the body never writes to the archive	128	Public/HLOD/HLODSetup.h
+struct	FInstancedStructContainer	WithSerializer	decoded: InstancedStructContainerPropertyData	113	Source/Runtime/CoreUObject/Public/StructUtils/InstancedStructContainer.h
+struct	FStateTreeInstanceData	WithSerializer	decoded: StateTreeInstanceDataPropertyData	113	Plugins/Runtime/StateTree/Source/StateTreeModule/Public/StateTreeInstanceData.h
+struct	FPCGDataPtrWrapper	WithSerializer	decoded: PCGDataPtrWrapperPropertyData	109	Plugins/PCG/Source/PCG/Public/Data/PCGDataPtrWrapper.h
+struct	FTransformCurve	WithSerializer	tagged: FAnimCurveBase::Serialize returns false	109	Public/Animation/AnimCurveTypes.h
+struct	FStateTreeStateLink	WithStructuredSerializer	tagged: Serialize returns false	107	Plugins/Runtime/StateTree/Source/StateTreeModule/Public/StateTreeTypes.h
+struct	FRigVMMemoryStorageStruct	WithSerializer	decoded: RigVMMemoryStorageStructPropertyData	106	Plugins/Runtime/RigVM/Source/RigVM/Public/RigVMCore/RigVMMemoryStorageStruct.h
+struct	FPCGPointArray	WithSerializer	decoded: PCGPointArrayPropertyData	97	Plugins/PCG/Source/PCG/Public/PCGPointArray.h
+struct	FStateTreeReference	WithStructuredSerializer	tagged: Serialize returns false	69	Plugins/Runtime/StateTree/Source/StateTreeModule/Public/StateTreeReference.h
+struct	FKeyHandleMap	WithSerializer	decoded: KeyHandleMapPropertyData	66	Classes/Curves/KeyHandle.h
+struct	FPerPlatformBool	WithSerializer	decoded: PerPlatformBoolPropertyData	63	Source/Runtime/CoreUObject/Public/UObject/PerPlatformProperties.h
+struct	FSubstrateMaterialInput	WithSerializer	tagged: no registered struct ops (MaterialShared.cpp)	50	Public/MaterialExpressionIO.h
+struct	FShadingModelMaterialInput	WithSerializer	tagged: no registered struct ops (MaterialShared.cpp)	49	Public/MaterialExpressionIO.h
+struct	FRemoteControlProperty	WithSerializer	decoded: RemoteControlPropertyPropertyData (its tagged properties)	44	Plugins/VirtualProduction/RemoteControl/Source/RemoteControl/Public/RemoteControlField.h
+struct	FAnimCurveBase	WithSerializer	tagged: Serialize returns false	44	Public/Animation/AnimCurveTypes.h
+struct	FAvaSequenceTime	WithSerializer	decoded: AvaSequenceTimePropertyData (its tagged properties)	44	Plugins/VirtualProduction/Avalanche/Source/AvalancheSequence/Public/AvaSequenceShared.h
+struct	FClothLODDataCommon	WithSerializer	decoded: ClothLODDataCommonPropertyData	40	Source/Runtime/ClothingSystemRuntimeCommon/Public/ClothLODData.h
+struct	FGameplayEffectModifierMagnitude	WithSerializer	no data: the body never writes to the archive	40	Plugins/Runtime/GameplayAbilities/Source/GameplayAbilities/Public/GameplayEffect.h
+struct	FFontOutlineSettings	WithSerializer	no data: the body never writes to the archive	38	Source/Runtime/SlateCore/Public/Fonts/SlateFontInfo.h
+struct	FClothTetherData	WithSerializer	decoded: ClothTetherDataPropertyData	38	Source/Runtime/ClothingSystemRuntimeCommon/Public/ClothTetherData.h
+struct	FNavAgentSelector	WithSerializer	decoded: NavAgentSelectorPropertyData	37	Classes/AI/Navigation/NavAgentSelector.h
+struct	FBox2f	WithSerializer	decoded: Box2fPropertyData	36	Source/Runtime/CoreUObject/Private/UObject/Property.cpp
+struct	FAnimNextVariableReference	WithSerializer	no data: the body never writes to the archive	33	Plugins/Experimental/UAF/UAF/Source/UAF/Public/Variables/AnimNextVariableReference.h
+struct	FRCEntityWrapper	WithSerializer	decoded: RCEntityWrapperPropertyData	33	Plugins/VirtualProduction/RemoteControl/Source/RemoteControl/Private/RemoteControlExposeRegistry.h
+struct	FRemoteControlProtocolBinding	WithSerializer	decoded: RemoteControlProtocolBindingPropertyData	33	Plugins/VirtualProduction/RemoteControl/Source/RemoteControl/Public/RemoteControlProtocolBinding.h
+struct	FInstancedOverridablePropertyBag	WithSerializer	decoded: InstancedOverridablePropertyBagPropertyData	31	Plugins/Cameras/GameplayCameras/Source/GameplayCameras/Public/StructUtils/OverridablePropertyBag.h
+struct	FTwoVectors	core	decoded: TwoVectorsPropertyData	30	
+struct	FBox2D	core	decoded: Box2DPropertyData	28	
+struct	FRetargetDefinition	WithSerializer	no data: the body never writes to the archive	25	Plugins/Animation/IKRig/Source/IKRig/Public/Rig/IKRigDefinition.h
+struct	FShaderValueTypeHandle	WithSerializer	decoded: ShaderValueTypeHandlePropertyData	25	Plugins/Runtime/ComputeFramework/Source/ComputeFramework/Public/ComputeFramework/ShaderParamTypeDefinition.h
+struct	FAnimNextTraitHandle	WithSerializer	decoded: AnimNextTraitHandlePropertyData	22	Plugins/Experimental/UAF/UAFAnimGraph/Source/UAFAnimGraph/Public/TraitCore/TraitHandle.h
+struct	FMatrix	core	decoded: MatrixPropertyData	21	
+struct	FIKRetargetPelvisMotionOpSettings	WithSerializer	tagged: SerializeOpWithVersion	21	Plugins/Animation/IKRig/Source/IKRig/Public/Retargeter/RetargetOps/PelvisMotionOp.h
+struct	FGeometryCollectionSizeSpecificData	WithSerializer	no data: the body never writes to the archive	19	Public/GeometryCollection/GeometryCollectionObject.h
+struct	FGameplayEffectVersion	WithStructuredSerializer	decoded: GameplayEffectVersionPropertyData	17	Plugins/Runtime/GameplayAbilities/Source/GameplayAbilities/Public/GameplayEffect.h
+struct	FGroomDataflowSettings	WithSerializer	decoded: GroomDataflowSettingsPropertyData	17	Plugins/Runtime/HairStrands/Source/HairStrandsCore/Public/GroomAssetDataflow.h
+struct	FAnimNode_RetargetPoseFromMesh	WithSerializer	no data: the body never writes to the archive	16	Plugins/Animation/IKRig/Source/IKRig/Public/AnimNodes/AnimNode_RetargetPoseFromMesh.h
+struct	FRigVMPropertyBag	WithSerializer	decoded: RigVMPropertyBagPropertyData	16	Plugins/Runtime/RigVM/Source/RigVM/Public/RigVMCore/RigVMPropertyBag.h
+struct	FTransform3f	core	decoded: Transform3fPropertyData	16	
+struct	FAlphaBlendArgs	WithSerializer,WithStructuredSerializer	no data: the body never writes to the archive	15	Public/AlphaBlend.h
+struct	FManagedArrayCollection	WithSerializer	decoded: ManagedArrayCollectionPropertyData	12	Source/Runtime/Experimental/Chaos/Public/GeometryCollection/ManagedArrayCollection.h
+struct	FIKRetargetStrideWarpingOpSettings	WithSerializer	tagged: SerializeOpWithVersion	12	Plugins/Animation/IKRig/Source/IKRig/Public/Retargeter/RetargetOps/StrideWarpingOp.h
+struct	FUAFGraphChooser	WithSerializer	no data: the body never writes to the archive	10	Plugins/Experimental/UAF/UAFChooser/Source/UAFChooser/Internal/ObjectChooser_UAFGraph.h
+struct	FIKRetargetPinBoneOpSettings	WithSerializer	tagged: SerializeOpWithVersion	10	Plugins/Animation/IKRig/Source/IKRig/Public/Retargeter/RetargetOps/PinBoneOp.h
+struct	FAvaPlayableRemoteControlValue	WithSerializer	decoded: AvaPlayableRemoteControlValuePropertyData	9	Plugins/VirtualProduction/Avalanche/Source/AvalancheMedia/Public/Playable/AvaPlayableRemoteControlValues.h
+struct	FEnumAnimProperty	WithSerializer	no data: the body never writes to the archive	8	Plugins/Experimental/UAF/UAFChooser/Source/UAFChooser/Internal/ChooserParameters.h
+struct	FControlRigOverrideContainer	WithSerializer	decoded: ControlRigOverrideContainerPropertyData	8	Plugins/Animation/ControlRig/Source/ControlRig/Public/ControlRigOverride.h
+struct	FNiagaraDataChannelVariable	WithSerializer	decoded: NiagaraDataChannelVariablePropertyData	8	Plugins/FX/Niagara/Source/Niagara/Public/NiagaraDataChannelVariable.h
+struct	FRotator3f	WithSerializer	decoded: Rotator3fPropertyData	8	Source/Runtime/CoreUObject/Private/UObject/Property.cpp
+struct	FWorldConditionQueryDefinition	WithSerializer	decoded: WorldConditionQueryDefinitionPropertyData	8	Plugins/Runtime/WorldConditions/Source/WorldConditions/Public/WorldConditionQuery.h
+struct	FWorldPartitionActorFilter	WithSerializer	decoded: WorldPartitionActorFilterPropertyData	6	Public/WorldPartition/Filter/WorldPartitionActorFilter.h
+struct	FCommonInputActionDataBase	WithSerializer	no data: the body never writes to the archive	5	Plugins/Runtime/CommonUI/Source/CommonUI/Public/CommonUITypes.h
+struct	FMovieSceneTimeWarpVariant	WithSerializer	decoded: MovieSceneTimeWarpVariantPropertyData	5	Source/Runtime/MovieScene/Public/Variants/MovieSceneTimeWarpVariant.h
+struct	FAnimNode_LiveLinkPose	WithSerializer	tagged: writes its tagged properties	4	Source/Runtime/LiveLinkAnimationCore/Public/AnimNode_LiveLinkPose.h
+struct	FMotionMatchingBlueprintBlendSettings	WithSerializer,WithStructuredSerializer	no data: the body never writes to the archive	4	Plugins/Animation/PoseSearch/Source/Runtime/Public/PoseSearch/MotionMatchingAnimNodeLibrary.h
+struct	FFloatAnimProperty	WithSerializer	no data: the body never writes to the archive	4	Plugins/Experimental/UAF/UAFChooser/Source/UAFChooser/Internal/ChooserParameters.h
+struct	FFontCharacter	WithSerializer	decoded: FontCharacterPropertyData	4	Font.h
+struct	FChooserPlayerSettings	WithSerializer,WithStructuredSerializer	no data: the body never writes to the archive	3	Plugins/Chooser/Source/Chooser/Public/ChooserTypes.h
+struct	FFrameTime	WithSerializer	tagged: WithSerializer is commented out (Property.cpp)	3	Source/Runtime/CoreUObject/Private/UObject/Property.cpp
+struct	FMovieSceneDoubleValue	WithSerializer	decoded: MovieSceneDoubleValuePropertyData	3	Source/Runtime/MovieScene/Public/Channels/MovieSceneDoubleChannel.h
+struct	FTimespan	WithSerializer	decoded: TimespanPropertyData	2	Source/Runtime/CoreUObject/Private/UObject/Property.cpp
+struct	FAnimNode_RemapCurves	WithSerializer	decoded: AnimNode_RemapCurvesPropertyData	2	Plugins/Experimental/Animation/CurveExpression/Source/Runtime/Public/AnimNode_RemapCurves.h
+struct	FIKRetargetIKChainsOpSettings	WithSerializer	tagged: SerializeOpWithVersion writes the tagged properties	2	Plugins/Animation/IKRig/Source/IKRig/Public/Retargeter/RetargetOps/IKChainsOp.h
+struct	FRetargetIKChainSettings	WithSerializer	tagged: writes its tagged properties	2	Plugins/Animation/IKRig/Source/IKRig/Public/Retargeter/RetargetOps/IKChainsOp.h
+struct	FBoolAnimProperty	WithSerializer	no data: the body never writes to the archive	2	Plugins/Experimental/UAF/UAFChooser/Source/UAFChooser/Internal/ChooserParameters.h
+struct	FAnimNextGraphInstanceTaskInstanceData	WithSerializer	no data: the body never writes to the archive	2	Plugins/Experimental/UAF/UAFStateTree/Source/UAFStateTree/Internal/Tasks/AnimNextStateTreeGraphInstanceTask.h
+struct	FDataflowImage	WithSerializer	decoded: DataflowImagePropertyData	2	Source/Runtime/Dataflow/Core/Public/Dataflow/DataflowImage.h
+struct	FDataflowVertexSkinWeightData	WithSerializer	decoded: DataflowVertexSkinWeightDataPropertyData	2	Plugins/Dataflow/Source/DataflowNodes/Public/Dataflow/DataflowCollectionEditSkinWeightsNode.h
+struct	FIKRetargetRootMotionOpSettings	WithSerializer	tagged: SerializeOpWithVersion	2	Plugins/Animation/IKRig/Source/IKRig/Public/Retargeter/RetargetOps/RootMotionGeneratorOp.h
+struct	FPCGAttributePropertySelector	WithSerializer	no data: the body never writes to the archive	2	Plugins/PCG/Source/PCG/Public/Metadata/PCGAttributePropertySelector.h
+struct	FVector3d	core	decoded: Vector3dPropertyData	2	
+struct	FIntVector4	core	decoded: IntVector4PropertyData	1	
+struct	FMediaFrameworkCaptureCameraViewportCameraOutputInfo	WithSerializer	no data: the body never writes to the archive	1	Plugins/Media/MediaFrameworkUtilities/Source/MediaFrameworkUtilitiesEditor/Private/MediaFrameworkWorldSettingsAssetUserData.h
+struct	FSimpleCurveKey	WithSerializer	decoded: SimpleCurveKeyPropertyData	1	Classes/Curves/SimpleCurve.h
+struct	FSkeletalMeshSamplingRegionBuiltData	WithSerializer	decoded: SkeletalMeshSamplingRegionBuiltDataPropertyData	1	SkeletalMeshSampling.h
+struct	FBindableBool	DECLARE_BINDABLE_STRUCT_OPS	decoded: BindableBoolPropertyData	advent-test	Plugins/Experimental/UAF/UAF/Source/UAF/Public/BindableValue/UAFBindableTypes.h
+struct	FBindableByte	DECLARE_BINDABLE_STRUCT_OPS	decoded: BindableBytePropertyData	advent-test	Plugins/Experimental/UAF/UAF/Source/UAF/Public/BindableValue/UAFBindableTypes.h
+struct	FBindableDouble	DECLARE_BINDABLE_STRUCT_OPS	decoded: BindableDoublePropertyData	advent-test	Plugins/Experimental/UAF/UAF/Source/UAF/Public/BindableValue/UAFBindableTypes.h
+struct	FBindableEnum	DECLARE_BINDABLE_STRUCT_OPS	decoded: BindableEnumPropertyData	advent-test	Plugins/Experimental/UAF/UAF/Source/UAF/Public/BindableValue/UAFBindableTypes.h
+struct	FBindableFloat	DECLARE_BINDABLE_STRUCT_OPS	decoded: BindableFloatPropertyData	advent-test	Plugins/Experimental/UAF/UAF/Source/UAF/Public/BindableValue/UAFBindableTypes.h
+struct	FBindableInt32	DECLARE_BINDABLE_STRUCT_OPS	decoded: BindableInt32PropertyData	advent-test	Plugins/Experimental/UAF/UAF/Source/UAF/Public/BindableValue/UAFBindableTypes.h
+struct	FBindableInt64	DECLARE_BINDABLE_STRUCT_OPS	decoded: BindableInt64PropertyData	advent-test	Plugins/Experimental/UAF/UAF/Source/UAF/Public/BindableValue/UAFBindableTypes.h
+struct	FBindableName	DECLARE_BINDABLE_STRUCT_OPS	decoded: BindableNamePropertyData	advent-test	Plugins/Experimental/UAF/UAF/Source/UAF/Public/BindableValue/UAFBindableTypes.h
+struct	FBindableObject	DECLARE_BINDABLE_STRUCT_OPS	decoded: BindableObjectPropertyData	advent-test	Plugins/Experimental/UAF/UAF/Source/UAF/Public/BindableValue/UAFBindableTypes.h
+struct	FBindableQuat	DECLARE_BINDABLE_STRUCT_OPS	decoded: BindableQuatPropertyData	advent-test	Plugins/Experimental/UAF/UAF/Source/UAF/Public/BindableValue/UAFBindableTypes.h
+struct	FBindableStruct	DECLARE_BINDABLE_STRUCT_OPS	decoded: BindableStructPropertyData	advent-test	Plugins/Experimental/UAF/UAF/Source/UAF/Public/BindableValue/UAFBindableTypes.h
+struct	FBindableTransform	DECLARE_BINDABLE_STRUCT_OPS	decoded: BindableTransformPropertyData	advent-test	Plugins/Experimental/UAF/UAF/Source/UAF/Public/BindableValue/UAFBindableTypes.h
+struct	FBindableVector	DECLARE_BINDABLE_STRUCT_OPS	decoded: BindableVectorPropertyData	advent-test	Plugins/Experimental/UAF/UAF/Source/UAF/Public/BindableValue/UAFBindableTypes.h
+struct	FChaosVD*	CVD_IMPLEMENT_SERIALIZER	unused: Chaos Visual Debugger recording data, in no package	0	Source/Runtime/Experimental/ChaosVisualDebugger
+struct	FCustomOverrides	CitySample RuleProcessor	unused: in no package	0	CitySample Plugins/RuleProcessor/Source/PointCloud/Public/PointCloudSliceAndDiceCustomOverrides.h
+struct	FAdventRemnancePartState	advent	unused: save-game state, in no package	0	advent-test Source/advent/Private/Remnance/AdventRemnanceTypes.cpp
+struct	FAdventCarriedRemnance	advent	unused: save-game state, in no package	0	advent-test Source/advent/Private/Remnance/AdventRemnanceTypes.cpp
+struct	FAdventSandSavedPatch	AdventSandRuntime	unused: save-game state, in no package	0	advent-test Plugins/AdventSand/Source/AdventSandRuntime/Private/AdventSandState.cpp
+struct	FAdventSandHeldLoad	AdventSandRuntime	unused: save-game state, in no package	0	advent-test Plugins/AdventSand/Source/AdventSandRuntime/Private/AdventSandState.cpp
+struct	FEditorOnlyAssetReference	WithSerializer	tagged: Serialize returns false	advent-test	Plugins/MetaHuman/MetaHumanCharacter/Source/MetaHumanCharacterPalette/Private/EditorOnlyAssetReference.cpp
+class	UMetaHumanCharacter	MetaHumanCharacter	decoded: ClassSerializers UMetaHumanCharacter	advent-test	Plugins/MetaHuman/MetaHumanCharacter/Source/MetaHumanCharacter/Private/MetaHumanCharacter.cpp
+property	FLazyObjectProperty	SerializeItem	decoded: LazyObjectPropertyData	AutomotiveConfigurator	Source/Runtime/CoreUObject/Private/UObject/PropertyLazyObjectPtr.cpp
+property	FVerseDynamicProperty	SerializeItem	unused: Verse, in no package	0	Source/Runtime/CoreUObject
