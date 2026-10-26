@@ -34,6 +34,14 @@ namespace UAssetAPI.JSON
     [AttributeUsage(AttributeTargets.Field | AttributeTargets.Property)]
     public sealed class WriteBackCopyAttribute : Attribute { }
 
+    /// <summary>Names the format of a byte field that holds a payload rather than a serialized engine structure.</summary>
+    [AttributeUsage(AttributeTargets.Field | AttributeTargets.Property)]
+    public sealed class PayloadFormatAttribute : Attribute
+    {
+        public string Format { get; }
+        public PayloadFormatAttribute(string format) { Format = format; }
+    }
+
     /// <summary>The contract for reading decoded data: write-back copies are left out.</summary>
     internal class ReadableContractResolver : UAssetContractResolver
     {

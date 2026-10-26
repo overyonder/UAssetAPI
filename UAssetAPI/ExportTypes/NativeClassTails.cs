@@ -219,10 +219,16 @@ public class FStaticMeshComponentLODInfo
     [JsonProperty] public int ColorStride;
     [JsonProperty] public int ColorNumVertices;
     [JsonProperty] public int ColorElementSize;
-    [JsonProperty] public byte[] ColorData;
+    [JsonProperty, WriteBackCopy] public byte[] ColorData;
+    /// <summary>ColorData decoded: one FColor per vertex, as its packed BGRA word.</summary>
+    [JsonProperty] public uint[] Colors;
     /// <summary>Mesh-paint source vertices, kept as their serialized bytes: position, normal and colour per vertex.</summary>
     [JsonProperty] public int PaintedVertexCount;
-    [JsonProperty] public byte[] PaintedVertices;
+    [JsonProperty, WriteBackCopy] public byte[] PaintedVertices;
+    /// <summary>PaintedVertices decoded: positions (3 per vertex), normals (4 per vertex) and FColor words.</summary>
+    [JsonProperty] public double[] PaintedPositions;
+    [JsonProperty] public double[] PaintedNormals;
+    [JsonProperty] public uint[] PaintedColors;
 }
 
 /// <summary>The data native actor and component serializers write after the tagged properties, base class first.</summary>
@@ -242,7 +248,7 @@ public class NativeClassTailData
     /// packages before FFrameworkObjectVersion::BlueprintGeneratedClassIsAlwaysAuthoritative.</summary>
     [JsonProperty] public bool? LegacyGeneratedClassIsAuthoritative;
     /// <summary>NiagaraDataInterfaceTexture.cpp: StreamData, the texture's stream data array.</summary>
-    [JsonProperty] public byte[] NiagaraTextureStreamData;
+    [JsonProperty, PayloadFormat("Niagara texture stream data")] public byte[] NiagaraTextureStreamData;
     /// <summary>World.cpp UWorld::Serialize: the persistent level, extra referenced objects and persistent streaming levels.</summary>
     [JsonProperty] public FPackageIndex WorldPersistentLevel;
     [JsonProperty] public List<FPackageIndex> WorldExtraReferencedObjects;
@@ -304,7 +310,7 @@ public class NativeClassTailData
     /// <summary>AnimSequenceSourceRawTracks decoded: per track, its position, rotation and scale keys, each a flat array of components.</summary>
     [JsonProperty] public List<float[][]> AnimSequenceSourceRawTracksKeys;
     /// <summary>Compressed data saved inline before FFrameworkObjectVersion::MoveCompressedAnimDataToTheDDC.</summary>
-    [JsonProperty] public byte[] AnimSequenceLegacyCompressedData;
+    [JsonProperty, PayloadFormat("compressed animation (inline, before MoveCompressedAnimDataToTheDDC)")] public byte[] AnimSequenceLegacyCompressedData;
     [JsonProperty] public bool? AnimSequenceSerializeCompressedData;
     /// <summary>ControlRig.cpp: physics solver IDs and names, from ControlRigStoresPhysicsSolvers.</summary>
     [JsonProperty] public List<KeyValuePair<Guid, FName>> ControlRigPhysicsSolvers;
@@ -321,9 +327,9 @@ public class NativeClassTailData
     /// UAFAnimGraph/Graph/AnimNextAnimationGraph.cpp UUAFAnimGraph::Serialize: the graph's compiled shared data, written by the
     /// trait writer. The engine reads it only from cooked packages; the editor recompiles the graph from its editor data.
     /// </summary>
-    [JsonProperty] public byte[] UAFSharedDataArchiveBuffer;
+    [JsonProperty, PayloadFormat("compiled UAF graph shared data, read only from cooked packages")] public byte[] UAFSharedDataArchiveBuffer;
     /// <summary>Bytes after an older anim graph's properties, which the engine skips by seeking to the export's end.</summary>
-    [JsonProperty] public byte[] UAFSkippedBytes;
+    [JsonProperty, PayloadFormat("older anim graph data the engine skips")] public byte[] UAFSkippedBytes;
     /// <summary>
     /// Sound/SoundNode.cpp USoundNode::Serialize and SoundCue.cpp USoundCue::Serialize: strip flags (absent before cooked
     /// editor assets) and the editor graph node, or the cue's editor graph.
@@ -903,6 +909,23 @@ public static class NativeClassTails
 
     // StaticMeshComponent.h FPaintedVertex: position (FVector), normal (FVector4, or a packed normal before
     // IncreaseNormalPrecision), colour; FVector and FVector4 are doubles with large world coordinates.
+    /// <summary>StaticMeshComponent.cpp FPaintedVertex: position, normal (a packed normal before IncreaseNormalPrecision, then
+    /// FVector4) and colour, with large world coordinates in double precision.</summary>
+    static void DecodePaintedVertices(FStaticMeshComponentLODInfo lod, UAsset asset)
+    {
+        bool lwc = asset.ObjectVersionUE5 >= ObjectVersionUE5.LARGE_WORLD_COORDINATES;
+        bool packed = asset.GetCustomVersion(RenderingGuid) < IncreaseNormalPrecision;
+        int n = lod.PaintedVertexCount;
+        lod.PaintedPositions = new double[n * 3]; lod.PaintedNormals = new double[n * 4]; lod.PaintedColors = new uint[n];
+        using var r = new BinaryReader(new MemoryStream(lod.PaintedVertices));
+        for (int i = 0; i < n; i++)
+        {
+            for (int k = 0; k < 3; k++) lod.PaintedPositions[i * 3 + k] = lwc ? r.ReadDouble() : r.ReadSingle();
+            for (int k = 0; k < 4; k++) lod.PaintedNormals[i * 4 + k] = packed ? r.ReadByte() / 127.5 - 1 : lwc ? r.ReadDouble() : r.ReadSingle();
+            lod.PaintedColors[i] = r.ReadUInt32();
+        }
+    }
+
     static int PaintedVertexSize(UAsset asset)
     {
         bool lwc = asset.ObjectVersionUE5 >= ObjectVersionUE5.LARGE_WORLD_COORDINATES;
@@ -946,6 +969,8 @@ public static class NativeClassTails
                     int count = reader.ReadInt32();
                     if (count < 0 || lod.ColorElementSize != 4) throw new FormatException("Unexpected vertex colour buffer");
                     lod.ColorData = reader.ReadBytes(count * lod.ColorElementSize);
+                    lod.Colors = new uint[count];
+                    Buffer.BlockCopy(lod.ColorData, 0, lod.Colors, 0, count * 4);
                 }
             }
         }
@@ -954,6 +979,7 @@ public static class NativeClassTails
             lod.PaintedVertexCount = reader.ReadInt32();
             if (lod.PaintedVertexCount < 0) throw new FormatException("Invalid painted vertex count");
             lod.PaintedVertices = reader.ReadBytes(checked(lod.PaintedVertexCount * PaintedVertexSize(asset)));
+            DecodePaintedVertices(lod, asset);
         }
         return lod;
     }
