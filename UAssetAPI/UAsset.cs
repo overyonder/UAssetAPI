@@ -1091,6 +1091,8 @@ namespace UAssetAPI
                 switch (exportClassType)
                 {
                     case "RigHierarchy":
+                        Exports[i] = Exports[i].ConvertToChildExport<RigHierarchyExport>();
+                        break;
                     case "RigVM":
                         Exports[i] = Exports[i].ConvertToChildExport<CustomSerializedExport>();
                         break;
