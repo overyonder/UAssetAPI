@@ -7,9 +7,9 @@ using UAssetAPI.Unversioned;
 
 namespace UAssetAPI.ExportTypes;
 
-public class UserDefinedStructExport : StructExport
+/// <summary>UserDefinedStruct.cpp UUserDefinedStruct::Serialize: after the script struct, the default instance when up to date.</summary>
+public class UserDefinedStructExport : ScriptStructExport
 {
-    public uint StructFlags;
     public List<PropertyData> StructData = [];
     public EClassSerializationControlExtension SerializationControl2;
     public EOverriddenPropertyOperation Operation2;
@@ -35,8 +35,6 @@ public class UserDefinedStructExport : StructExport
             return;
 
         if (this.ObjectFlags.HasFlag(EObjectFlags.RF_ClassDefaultObject)) return;
-
-        StructFlags = reader.ReadUInt32();
 
         PropertyData bit;
         var unversionedHeader = new FUnversionedHeader(reader);
@@ -67,8 +65,6 @@ public class UserDefinedStructExport : StructExport
             return;
 
         if (this.ObjectFlags.HasFlag(EObjectFlags.RF_ClassDefaultObject)) return;
-
-        writer.Write(StructFlags);
 
         MainSerializer.GenerateUnversionedHeader(ref StructData, this.ObjectName, FName.DefineDummy(writer.Asset, writer.Asset.InternalAssetPath), writer.Asset)?.Write(writer);
         for (int j = 0; j < StructData.Count; j++)

@@ -1171,4 +1171,30 @@ internal static class NativeClassTailTable
         [("/Script/ZoneGraph", "ZoneShape")] = NativeClassTail.Actor,
         [("/Script/ZoneGraph", "ZoneShapeComponent")] = NativeClassTail.ActorComponent | NativeClassTail.SceneComponent,
     };
+
+    /// <summary>Native classes deriving from UClass, by name: an export of one of them is itself a class.</summary>
+    internal static readonly HashSet<string> ClassDerived = new()
+    {
+        "ActorModifierCoreGeneratedClass",
+        "AnimBlueprintGeneratedClass",
+        "AvaSequenceDirectorGeneratedClass",
+        "BlueprintGeneratedClass",
+        "ControlRigBlueprintGeneratedClass",
+        "DisplayClusterBlueprintGeneratedClass",
+        "DynamicSubobjectInstancingTestClass",
+        "LinkerPlaceholderClass",
+        "MVVMInstancedViewModelGeneratedClass",
+        "OptimusNode_ComputeKernelFunctionGeneratorClass",
+        "OptimusNode_ConstantValueGeneratorClass",
+        "OptimusValueContainerGeneratorClass",
+        "PythonGeneratedClass",
+        "RenderGridBlueprintGeneratedClass",
+        "RigVMBlueprintGeneratedClass",
+        "RigVMMemoryStorageGeneratorClass",
+        "SceneStateGeneratedClass",
+        "SceneStateTaskGeneratedClass",
+        "ScriptBlueprintGeneratedClass",
+        "VerseClass",
+        "WidgetBlueprintGeneratedClass",
+    };
 }

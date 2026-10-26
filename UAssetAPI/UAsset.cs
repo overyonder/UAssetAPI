@@ -1122,13 +1122,13 @@ namespace UAssetAPI
                         {
                             Exports[i] = Exports[i].ConvertToChildExport<StringTableExport>();
                         }
-                        else if (exportClassType.EndsWith("BlueprintGeneratedClass"))
+                        else if (exportClassType.EndsWith("BlueprintGeneratedClass") || NativeClassTailTable.ClassDerived.Contains(exportClassType))
                         {
                             Exports[i] = Exports[i].ConvertToChildExport<ClassExport>();
                         }
                         else if (exportClassType == "ScriptStruct")
                         {
-                            Exports[i] = Exports[i].ConvertToChildExport<StructExport>();
+                            Exports[i] = Exports[i].ConvertToChildExport<ScriptStructExport>();
                         }
                         else if (exportClassType == "SplineComponent")
                         {
