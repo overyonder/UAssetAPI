@@ -60,7 +60,7 @@ public class FSimpleMemberReferenceData
     [JsonProperty] public Guid MemberGuid;
 }
 
-internal static class NativeClassTails
+public static class NativeClassTails
 {
     static readonly Guid FortniteReleaseGuid = UAPUtils.GUID(0xE7086368, 0x6B234C58, 0x84391B70, 0x16265E91);
     static readonly Guid UE5SpecialProjectGuid = UAPUtils.GUID(0x59DA5D52, 0x12324948, 0xB8785978, 0x70B8E98B);
@@ -244,13 +244,33 @@ internal static class NativeClassTails
         {
             if (NativeClassTailTable.Tails.TryGetValue(native, out var tails)) return tails;
             var schema = asset.Mappings?.GetSchemaFromName(native.Class, asset, native.Module, false);
-            if (schema == null || string.IsNullOrEmpty(schema.SuperType)) return null;
-            string module = schema.SuperTypeModulePath;
-            if (string.IsNullOrEmpty(module)) return null;
-            native = (module.StartsWith("/Script/") ? module : "/Script/" + module, schema.SuperType);
+            if (schema != null && !string.IsNullOrEmpty(schema.SuperType) && !string.IsNullOrEmpty(schema.SuperTypeModulePath))
+            {
+                string module = schema.SuperTypeModulePath;
+                native = (module.StartsWith("/Script/") ? module : "/Script/" + module, schema.SuperType);
+                continue;
+            }
+            // without a schema, a project class's parent comes from its declaration; the parent's module isn't declared,
+            // so an engine class reached that way is matched by name
+            if (!ProjectNativeParents.TryGetValue(native.Class, out var parent)) return null;
+            if (TailsByClassName.Value.TryGetValue(parent, out var byName)) return byName;
+            native = (null, parent);
         }
         return null;
     }
+
+    /// <summary>
+    /// Reflected class name to reflected parent name for project and plugin C++ classes that no mappings describe,
+    /// from their UCLASS declarations. Filled by the caller.
+    /// </summary>
+    public static readonly Dictionary<string, string> ProjectNativeParents = new();
+
+    static readonly Lazy<Dictionary<string, NativeClassTail>> TailsByClassName = new(() =>
+    {
+        var byName = new Dictionary<string, NativeClassTail>();
+        foreach (var kv in NativeClassTailTable.Tails) byName.TryAdd(kv.Key.Class, kv.Value);
+        return byName;
+    });
 
     static (string Module, string Class)? NativeBaseOf(UAsset asset, FPackageIndex classIndex, int depth = 0)
     {
