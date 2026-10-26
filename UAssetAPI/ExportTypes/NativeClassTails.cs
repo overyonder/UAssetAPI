@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using UAssetAPI.PropertyTypes.Objects;
+using UAssetAPI.CustomVersions;
 using UAssetAPI.UnrealTypes;
 
 namespace UAssetAPI.ExportTypes;
@@ -18,6 +19,7 @@ public enum NativeClassTail
     SceneComponent = 2,
     StaticMeshComponent = 4,
     Actor = 8,
+    BlueprintCore = 16,
 }
 
 /// <summary>One LOD's per-component data (StaticMeshComponent.cpp operator&lt;&lt;(FArchive&amp;, FStaticMeshComponentLODInfo&amp;)).</summary>
@@ -51,6 +53,9 @@ public class NativeClassTailData
     [JsonProperty] public FPackageIndex MeshPaintTextureCooked;
     [JsonProperty] public bool? ActorIsCooked;
     [JsonProperty] public FString ActorLabel;
+    /// <summary>Blueprint.cpp UBlueprintCore::Serialize: bLegacyGeneratedClassIsAuthoritative, read and discarded from
+    /// packages before FFrameworkObjectVersion::BlueprintGeneratedClassIsAlwaysAuthoritative.</summary>
+    [JsonProperty] public bool? LegacyGeneratedClassIsAuthoritative;
 }
 
 public class FSimpleMemberReferenceData
@@ -118,6 +123,8 @@ public static class NativeClassTails
                 data.ActorIsCooked = reader.ReadBooleanInt();
                 if (data.ActorIsCooked == true) data.ActorLabel = reader.ReadFString();
             }
+            if (tails.HasFlag(NativeClassTail.BlueprintCore) && asset.GetCustomVersion<FFrameworkObjectVersion>() < FFrameworkObjectVersion.BlueprintGeneratedClassIsAlwaysAuthoritative)
+                data.LegacyGeneratedClassIsAuthoritative = reader.ReadBooleanInt();
             if (stream.Position != stream.Length) return;
             export.NativeTails = data;
             export.Extras = Array.Empty<byte>();
@@ -153,6 +160,7 @@ public static class NativeClassTails
             writer.WriteBooleanInt(data.ActorIsCooked.Value);
             if (data.ActorIsCooked.Value) writer.Write(data.ActorLabel);
         }
+        if (data.LegacyGeneratedClassIsAuthoritative != null) writer.WriteBooleanInt(data.LegacyGeneratedClassIsAuthoritative.Value);
     }
 
     static int BoundsSize(UAsset asset) => asset.ObjectVersionUE5 >= ObjectVersionUE5.LARGE_WORLD_COORDINATES ? 7 * 8 : 7 * 4;

@@ -2,14 +2,17 @@
 # Generates UAssetAPI/ExportTypes/NativeClassTails.g.cs from an Unreal Engine source tree.
 # Usage: tools/generate-native-class-tails.sh <Engine directory> [extra source roots...]
 #
-# Lists every native class descending from AActor or UActorComponent, with its module (the nearest *.Build.cs) and
+# Lists every native class descending from AActor, UActorComponent or UBlueprintCore, with its module (the nearest *.Build.cs) and
 # which of these serializers, each run after the tagged properties and base class first, write persistent data for it:
 #   UActorComponent      Components/ActorComponent.cpp: UCSModifiedProperties
 #   USceneComponent      Components/SceneComponent.cpp: cooked static bounds, when bComputeBoundsOnceForGame
 #   UStaticMeshComponent Components/StaticMeshComponent.cpp: LODData
 #   AActor               Actor.cpp: bIsCooked and the cooked actor label
-# Other actor and component serializers in 5.8.3 write only while loading older versions, migrating remote objects
-# or cooking. Recheck the Serialize overrides of these classes when regenerating for a new engine release.
+#   UBlueprintCore       Blueprint.cpp: a legacy authority flag, read from packages before
+#                        FFrameworkObjectVersion::BlueprintGeneratedClassIsAlwaysAuthoritative
+# Other serializers of these classes in 5.8.3 save nothing after the tagged properties outside migration or cooking,
+# but some still read data that older engines saved; those reads are added as audits of older packages find them.
+# Recheck the Serialize overrides of these classes when regenerating for a new engine release.
 set -euo pipefail
 engine=$1; shift
 out=$(dirname "$0")/../UAssetAPI/ExportTypes/NativeClassTails.g.cs
@@ -29,13 +32,14 @@ awk -F'\t' '{p[$1]=$2; f[$1]=$3}
         if (x=="USceneComponent") flags="SceneComponent|" flags
         if (x=="UActorComponent") flags="ActorComponent|" flags
         if (x=="AActor") flags="Actor|" flags
+        if (x=="UBlueprintCore") flags="BlueprintCore|" flags
         x = (x in p) ? p[x] : ""
       }
       if (flags == "") continue
       sub(/\|$/, "", flags)
       print substr(c,2)"\t"flags"\t"f[c]
     }
-    print "Actor\tActor\t" f["AActor"]; print "ActorComponent\tActorComponent\t" f["UActorComponent"]
+    print "Actor\tActor\t" f["AActor"]; print "BlueprintCore\tBlueprintCore\t" f["UBlueprintCore"]; print "ActorComponent\tActorComponent\t" f["UActorComponent"]
   }' "$tmp/inherit.tsv" | sort -u |
 while IFS=$'\t' read -r cls flags header; do
   dir=$(dirname "$header"); module=""
