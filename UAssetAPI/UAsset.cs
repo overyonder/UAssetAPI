@@ -1301,6 +1301,19 @@ namespace UAssetAPI
 
         internal static JsonSerializerSettings jsonSettings = CreateJsonSettings();
 
+        /// <summary>
+        /// A serializer for reading decoded data rather than round-tripping it: the same converters, without type names or
+        /// null members.
+        /// </summary>
+        public static JsonSerializer CreateReadableJsonSerializer()
+        {
+            var settings = CreateJsonSettings();
+            settings.TypeNameHandling = TypeNameHandling.None;
+            settings.NullValueHandling = NullValueHandling.Ignore;
+            settings.ContractResolver = new ReadableContractResolver(null);
+            return JsonSerializer.Create(settings);
+        }
+
 #if RCT_NATIVE_BRIDGE
         [UnconditionalSuppressMessage("Trimming", "IL2026", Justification = AotContract.Json)]
         [UnconditionalSuppressMessage("AOT", "IL3050", Justification = AotContract.Json)]

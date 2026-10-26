@@ -1,3 +1,4 @@
+using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -104,7 +105,7 @@ internal static class ClassSerializers
                     {
                         bool cooked = c.Bool();
                         kernels.Add(cooked);
-                        if (cooked) { d["CookedShaderMaps"] = Rest(); break; }
+                        if (cooked) { d["CookedShaderMaps"] = new Payload("cooked shader maps", Rest()); break; }
                     }
                     d["KernelCooked"] = kernels;
                     break;
@@ -117,7 +118,7 @@ internal static class ClassSerializers
                 case "UDNA":
                     // DNAAsset.cpp, DNA.cpp: the DNA file read straight from the archive by FArchiveMemoryStream (two before the
                     // custom version, behavior then geometry); it is the rest of the export
-                    d["DNA"] = Rest();
+                    d["DNA"] = new Payload("RigLogic DNA", Rest());
                     break;
                 case "UCurveExpressionsDataAsset":
                     if (Ver(CurveExpressionGuid) >= ExpressionDataInSharedObject) d["NamedConstants"] = c.Array(c.Name, 8);
@@ -129,7 +130,7 @@ internal static class ClassSerializers
                 case "UParticleModuleRequired":
                     if (Ver(RenderingGuid) >= MovedParticleCutoutsToRequiredModule) Cooked(d, c, Rest);
                     break;
-                case "USkeletalMesh": ReadSkeletalMesh(d, c, r, asset); break;
+                case "USkeletalMesh": ReadSkeletalMesh(d, c, r, asset, export); break;
                 case "UUAFSystem":
                     // AnimNextModule.cpp: an older module's shared archive buffer, which the engine skips by seeking to the export's end
                     if (Ver(FortniteMainGuid) < AnimNextModuleRefactor) d["SkippedLegacyBuffer"] = Rest();
@@ -140,7 +141,7 @@ internal static class ClassSerializers
                     // Texture.cpp: strip flags, then with editor data the source's bulk data, an FEditorBulkData; before
                     // FUE5MainStreamObjectVersion::TextureSourceVirtualization a legacy FByteBulkData
                     var strip = c.StripFlags(d);
-                    if ((strip[0] & 1) == 0) d["Source"] = Ver(UE5MainGuid) < 42 ? c.ByteBulk() : c.EditorBulk();
+                    if ((strip[0] & 1) == 0) d["Source"] = Ver(UE5MainGuid) < 42 ? c.ByteBulk("texture source") : c.EditorBulk();
                     break;
                 }
                 case "UTexture2D":
@@ -149,7 +150,7 @@ internal static class ClassSerializers
                     c.StripFlags(d, "Texture2DStripFlags");
                     bool cooked = c.Bool();
                     d["bCooked"] = cooked;
-                    if (cooked) { d["bSerializeMipData"] = c.Bool(); d["CookedPlatformData"] = Rest(); }
+                    if (cooked) { d["bSerializeMipData"] = c.Bool(); d["CookedPlatformData"] = new Payload("cooked texture platform data", Rest()); }
                     break;
                 }
                 case "UTexture2DArray":
@@ -218,7 +219,7 @@ internal static class ClassSerializers
                         d["bInline"] = inline;
                         if (inline)
                         {
-                            d["FontData"] = c.Bytes();
+                            d["FontData"] = new Payload("font file", c.Bytes());
                             if (Ver(FortniteMainGuid) >= 180) d["PreprocessedFontGeometries"] = Rest();
                         }
                     }
@@ -226,7 +227,7 @@ internal static class ClassSerializers
                 }
                 case "UVectorFieldStatic":
                     // VectorField.cpp: SourceData, an FByteBulkData
-                    d["SourceData"] = c.ByteBulk();
+                    d["SourceData"] = c.ByteBulk("vector field volume");
                     break;
                 case "USubUVAnimation":
                     Cooked(d, c, Rest);
@@ -258,8 +259,11 @@ internal static class ClassSerializers
                     // MorphTargetCookedCPUDataCompressed, then the LOD models, geometry and the export's last field when not cooked
                     var strip = c.StripFlags(d);
                     if ((strip[0] & 2) != 0) break;
-                    if (Ver(FortniteMainGuid) >= 211) d["bCooked"] = c.Bool();
-                    d["MorphLODModels"] = Rest();
+                    bool cooked = Ver(FortniteMainGuid) >= 211 && c.Bool();
+                    d["bCooked"] = cooked;
+                    d["MorphLODModels"] = c.Array<object>(() => ReadMorphTargetLODModel(c, r, asset), 4);
+                    // a cooked package then stores the GPU-compressed deltas, which editor packages never hold
+                    if (cooked) d["CookedCompressedLODModels"] = new Payload("cooked compressed morph deltas", Rest());
                     break;
                 }
                 case "UMLDeformerMorphModel":
@@ -295,19 +299,19 @@ internal static class ClassSerializers
                 case "UGeometryCacheTrackStreamable":
                     // GeometryCacheTrackStreamable.cpp: the chunks (bulk data, size, first and last frame), the samples (time,
                     // bounding box, vertex and index counts) and the visibility samples (time range and state)
-                    d["Chunks"] = c.Array(() => new object[] { c.ByteBulk(), r.ReadInt32(), r.ReadSingle(), r.ReadSingle() }, 24);
+                    d["Chunks"] = c.Array(() => new object[] { c.ByteBulk("geometry cache chunk"), r.ReadInt32(), r.ReadSingle(), r.ReadSingle() }, 24);
                     d["Samples"] = c.Array(() => new object[] { r.ReadSingle(), c.Box(), r.ReadInt32(), r.ReadInt32() }, 20);
                     d["VisibilitySamples"] = c.Array(() => new object[] { r.ReadByte(), r.ReadSingle(), r.ReadByte(), r.ReadSingle(), c.Bool() }, 14);
                     break;
                 case "UNiagaraSimCache":
                     // NiagaraSimCache.cpp: from SimCache_BulkDataVersion1 each frame's system and emitter buffers, the rest of the export
-                    if (Ver(NiagaraGuid) >= 84) d["CacheFrameBuffers"] = Rest();
+                    if (Ver(NiagaraGuid) >= 84) d["CacheFrameBuffers"] = new Payload("Niagara simulation cache frames", Rest());
                     break;
                 case "UPCGLandscapeCache":
                     // PCGLandscapeCache.cpp: the cache entries, each its landscape GUID and coordinate, then
                     // FPCGLandscapeCacheEntry::Serialize: point half size, stride, layer names and the bulk data
                     d["CachedData"] = c.Array(() => new object[] { r.ReadGuid(), r.ReadInt32(), r.ReadInt32(), c.Vector(), r.ReadInt32(),
-                        c.Array(c.Name, 8), c.ByteBulk() }, 40);
+                        c.Array(c.Name, 8), c.ByteBulk("PCG landscape cache samples") }, 40);
                     break;
                 case "UPCGMetadata":
                     // PCGMetadata.cpp: from MultiLevelMetadata the default domain and the domain IDs, then the domains' attributes;
@@ -359,8 +363,8 @@ internal static class ClassSerializers
                     // (from ATMOSPHERIC_FOG_CACHE_DATA) and inscatter bulk data, and a counter
                     if (Ver(UE5MainGuid) < 46)
                     {
-                        if (asset.ObjectVersion >= ObjectVersion.VER_UE4_ATMOSPHERIC_FOG_CACHE_DATA) { d["Transmittance"] = c.ByteBulk(); d["Irradiance"] = c.ByteBulk(); }
-                        d["Inscatter"] = c.ByteBulk();
+                        if (asset.ObjectVersion >= ObjectVersion.VER_UE4_ATMOSPHERIC_FOG_CACHE_DATA) { d["Transmittance"] = c.ByteBulk("atmospheric fog lookup table"); d["Irradiance"] = c.ByteBulk("atmospheric fog lookup table"); }
+                        d["Inscatter"] = c.ByteBulk("atmospheric fog lookup table");
                         d["Counter"] = r.ReadInt32();
                     }
                     break;
@@ -387,7 +391,7 @@ internal static class ClassSerializers
                     long sizePos = r.BaseStream.Position;
                     long size = cls == "ARecastNavMesh" ? r.ReadUInt32() : r.ReadInt64();
                     if (size < (cls == "ARecastNavMesh" ? 4 : 8) || sizePos + size > r.BaseStream.Length) throw new FormatException($"Invalid recast data size {size}");
-                    d["RecastData"] = r.ReadBytes((int)(sizePos + size - r.BaseStream.Position));
+                    d["RecastData"] = new Payload("Recast navmesh tiles", r.ReadBytes((int)(sizePos + size - r.BaseStream.Position)));
                     break;
                 }
                 case "UModel": ReadModel(d, c, r, asset); break;
@@ -417,13 +421,13 @@ internal static class ClassSerializers
                     // LandscapeCollision.cpp: before LANDSCAPE_COLLISION_DATA_COOKING the height and dominant layer bulk data;
                     // after it the cooked flag, then cooked collision data or, with editor data, those two and, from
                     // LandscapePhysicalMaterialRenderData, the physical material render data
-                    if (asset.ObjectVersion < ObjectVersion.VER_UE4_LANDSCAPE_COLLISION_DATA_COOKING) { d["CollisionHeightData"] = c.ByteBulk(); d["DominantLayerData"] = c.ByteBulk(); break; }
+                    if (asset.ObjectVersion < ObjectVersion.VER_UE4_LANDSCAPE_COLLISION_DATA_COOKING) { d["CollisionHeightData"] = c.ByteBulk("landscape collision heights"); d["DominantLayerData"] = c.ByteBulk("landscape dominant layers"); break; }
                     {
                         bool cooked = c.Bool();
                         d["bCooked"] = cooked;
                         if (cooked) { d["CookedCollisionData"] = c.Bulk(); break; }
-                        d["CollisionHeightData"] = c.ByteBulk(); d["DominantLayerData"] = c.ByteBulk();
-                        if (Ver(FortniteMainGuid) >= 37) d["PhysicalMaterialRenderData"] = c.ByteBulk();
+                        d["CollisionHeightData"] = c.ByteBulk("landscape collision heights"); d["DominantLayerData"] = c.ByteBulk("landscape dominant layers");
+                        if (Ver(FortniteMainGuid) >= 37) d["PhysicalMaterialRenderData"] = c.ByteBulk("landscape physical material render data");
                     }
                     break;
                 case "ULandscapeHeightmapTextureEdgeFixup":
@@ -475,8 +479,7 @@ internal static class ClassSerializers
             d["SmartNames_DEPRECATED"] = c.Array(() => new object[] { c.Name(), ReadSmartNameMapping(c, r, asset) }, 8);
         if (asset.GetCustomVersion(AnimGuid) >= StoreMarkerNamesOnSkeleton)
         {
-            var strip = r.ReadBytes(2);
-            d["StripFlags"] = strip;
+            var strip = c.StripFlags(d);
             if ((strip[0] & 1) == 0) d["ExistingMarkerNames"] = c.Array(c.Name, 8);
         }
     }
@@ -519,13 +522,15 @@ internal static class ClassSerializers
     }
 
     /// <summary>
-    /// SkeletalMesh.cpp USkeletalMesh::Serialize up to the reference skeleton: strip flags, imported bounds, materials and the
-    /// reference skeleton. The rest is the imported model and render data, geometry, kept as bytes.
+    /// SkeletalMesh.cpp USkeletalMesh::Serialize: strip flags, imported bounds, materials, the reference skeleton, the imported
+    /// model (unless editor data is stripped), the cooked flag, the legacy object array, and the per-poly collision body setup.
     /// </summary>
-    static void ReadSkeletalMesh(Dictionary<string, object> d, Cursor c, AssetBinaryReader r, UAsset asset)
+    static void ReadSkeletalMesh(Dictionary<string, object> d, Cursor c, AssetBinaryReader r, UAsset asset, NormalExport export)
     {
-        d["StripFlags"] = r.ReadBytes(2);
-        d["ImportedBounds"] = r.ReadBytes(asset.ObjectVersionUE5 >= ObjectVersionUE5.LARGE_WORLD_COORDINATES ? 7 * 8 : 7 * 4);
+        var strip = c.StripFlags(d);
+        // FBoxSphereBounds: origin, box extent and sphere radius
+        var bounds = c.Doubles(7, c.Lwc);
+        d["ImportedBounds"] = new Dictionary<string, object> { ["Origin"] = bounds[..3], ["BoxExtent"] = bounds[3..6], ["SphereRadius"] = bounds[6] };
         if ((int)asset.GetCustomVersion<FEditorObjectVersion>() < RefactorMeshEditorMaterials)
             throw new FormatException("FSkeletalMaterial saved before FEditorObjectVersion::RefactorMeshEditorMaterials");
         // SkinnedAssetCommon.cpp operator<<(FArchive&, FSkeletalMaterial&)
@@ -541,7 +546,230 @@ internal static class ClassSerializers
             return m;
         }, 12);
         d["ReferenceSkeleton"] = ReadReferenceSkeleton(c, r, asset);
-        d["ModelAndRenderData"] = r.ReadBytes(checked((int)(r.BaseStream.Length - r.BaseStream.Position)));
+        int skel = asset.GetCustomVersion(SkeletalMeshGuid);
+        if (skel < SplitModelAndRenderData) throw new FormatException("skeletal mesh saved before FSkeletalMeshCustomVersion::SplitModelAndRenderData");
+        if ((strip[0] & 1) == 0) d["ImportedModel"] = ReadSkeletalMeshModel(c, r, asset);
+        bool cooked = c.Bool();
+        d["bCooked"] = cooked;
+        // FSkeletalMeshRenderData follows only in cooked packages
+        if (cooked) d["CookedRenderData"] = new Payload("cooked skeletal mesh render data", r.ReadBytes(checked((int)(r.BaseStream.Length - r.BaseStream.Position))));
+        if (asset.ObjectVersion < ObjectVersion.VER_UE4_REFERENCE_SKELETON_REFACTOR) throw new FormatException("skeletal mesh saved before VER_UE4_REFERENCE_SKELETON_REFACTOR");
+        d["DummyObjs"] = c.Array(() => new FPackageIndex(r), 4);
+        if (asset.GetCustomVersion(RenderingGuid) < TextureStreamingMeshUVChannelData) d["CachedStreamingTextureFactors"] = c.Array(() => r.ReadSingle(), 4);
+        if ((strip[0] & 1) == 0 && skel <= RemoveSourceData && c.Bool()) d["SourceData"] = ReadSkeletalMeshLODModel(c, r, asset);
+        if (asset.ObjectVersion >= ObjectVersion.VER_UE4_APEX_CLOTH && skel < NewClothingSystemAdded)
+            throw new FormatException("skeletal mesh saved before FSkeletalMeshCustomVersion::NewClothingSystemAdded");
+        // bEnablePerPolyCollision is a tagged property; the body setup reference follows when it is set
+        if (export?.Data?.Find(p => p.Name?.ToString() == "bEnablePerPolyCollision") is PropertyTypes.Objects.BoolPropertyData { Value: true })
+            d["BodySetup"] = new FPackageIndex(r);
+    }
+
+    // FSkeletalMeshCustomVersion, FRecomputeTangentCustomVersion, FOverlappingVerticesCustomVersion; UE5 main stream versions
+    const int CombineSectionWithChunk = 1, CombineSoftAndRigidVerts = 2, SaveNumVertices = 4, NewClothingSystemAdded = 8,
+        RemoveSourceData = 11, SplitModelAndRenderData = 12, RemoveTriangleSorting = 13, RemoveDuplicatedClothingSections = 14,
+        DeprecateSectionDisabledFlag = 15, SectionIgnoreByReduceAdded = 16, SkinWeightProfiles = 17, RemoveEnableClothLOD = 18,
+        RuntimeRecomputeTangent = 1, RecomputeTangentVertexColorMask = 2, DetectOverlappingVertices = 1,
+        IncreaseNormalPrecision = 26, IncreaseBoneIndexLimitPerChunk = 4, UnlimitedBoneInfluences = 5,
+        SkelMeshSectionVisibleInRayTracingFlagAdded = 54, InlineReductionCacheData = 57, SkeletalMeshLODModelMeshInfo = 58,
+        IncreasedSkinWeightPrecision = 90;
+    static readonly Guid RecomputeTangentGuid = UAPUtils.GUID(0x5579F886, 0x933A4C1F, 0x83BA087B, 0x6361B92F);
+    static readonly Guid OverlappingVerticesGuid = UAPUtils.GUID(0x612FBE52, 0xDA53400B, 0x910D4F91, 0x9FB1857C);
+
+    /// <summary>SkeletalMeshModel.cpp FSkeletalMeshModel::Serialize: strip flags, the LOD models, the model GUID and whether it
+    /// is a hash, and (with editor data) the inline reduction cache, each LOD's cached vertex and triangle counts.</summary>
+    static Dictionary<string, object> ReadSkeletalMeshModel(Cursor c, AssetBinaryReader r, UAsset asset)
+    {
+        var m = new Dictionary<string, object>();
+        int fortnite = (int)asset.GetCustomVersion<FFortniteMainBranchObjectVersion>();
+        bool editorStripped = false;
+        if (fortnite >= (int)FFortniteMainBranchObjectVersion.AllowSkeletalMeshToReduceTheBaseLOD) editorStripped = (c.StripFlags(m)[0] & 1) != 0;
+        m["LODModels"] = c.Array<object>(() => ReadSkeletalMeshLODModel(c, r, asset), 8);
+        m["SkeletalMeshModelGUID"] = r.ReadGuid();
+        m["bGuidIsHash"] = c.Bool();
+        if (!editorStripped)
+        {
+            if (fortnite >= (int)FFortniteMainBranchObjectVersion.AllowSkeletalMeshToReduceTheBaseLOD && asset.GetCustomVersion(UE5MainGuid) < InlineReductionCacheData)
+                throw new FormatException("FReductionBaseSkeletalMeshBulkData saved before ConvertReductionBaseSkeletalMeshBulkDataToInlineReductionCacheData");
+            if (asset.GetCustomVersion(UE5MainGuid) >= InlineReductionCacheData)
+                m["InlineReductionCacheDatas"] = c.Array(() => new object[] { r.ReadUInt32(), r.ReadUInt32() }, 8);
+        }
+        return m;
+    }
+
+    /// <summary>SkeletalMeshLODModel.cpp FSkeletalMeshLODModel::Serialize for packages from SplitModelAndRenderData: strip flags,
+    /// sections, section user data, the index buffer, active bones, imported mesh infos, the legacy size, vertex count, required
+    /// bones, raw point indices, the raw source data ID, the import vertex map, texture coordinate count and skin weight profiles.</summary>
+    static Dictionary<string, object> ReadSkeletalMeshLODModel(Cursor c, AssetBinaryReader r, UAsset asset)
+    {
+        var m = new Dictionary<string, object>();
+        var strip = c.StripFlags(m);
+        bool editor = (strip[0] & 1) == 0, audioVisual = (strip[0] & 2) == 0;
+        int editorVer = (int)asset.GetCustomVersion<FEditorObjectVersion>(), main = asset.GetCustomVersion(UE5MainGuid);
+        int skel = asset.GetCustomVersion(SkeletalMeshGuid), release = (int)asset.GetCustomVersion<FUE5ReleaseStreamObjectVersion>();
+        int fortnite = (int)asset.GetCustomVersion<FFortniteMainBranchObjectVersion>();
+        m["Sections"] = c.Array<object>(() => ReadSkelMeshSection(c, r, asset), 8);
+        if ((editor || !audioVisual) && editorVer >= (int)FEditorObjectVersion.SkeletalMeshBuildRefactor)
+            m["UserSectionsData"] = c.Array(() => new object[] { r.ReadInt32(), ReadSkelMeshSourceSectionUserData(c, r, asset) }, 4);
+        if (editor || !audioVisual) m["IndexBuffer"] = c.Array(() => r.ReadUInt32(), 4);
+        m["ActiveBoneIndices"] = c.Array(() => r.ReadUInt16(), 4);
+        if ((editor || !audioVisual) && main >= SkeletalMeshLODModelMeshInfo)
+            m["ImportedMeshInfos"] = c.Array(() => new object[] { c.Name(), r.ReadInt32(), r.ReadInt32() }, 16);
+        if (skel < CombineSectionWithChunk) throw new FormatException("LOD model saved before FSkeletalMeshCustomVersion::CombineSectionWithChunk");
+        m["LegacySize"] = r.ReadUInt32();
+        if (audioVisual) m["NumVertices"] = r.ReadUInt32();
+        m["RequiredBones"] = c.Array(() => r.ReadUInt16(), 2);
+        if (editor)
+        {
+            if (release < (int)FUE5ReleaseStreamObjectVersion.RemoveSkeletalMeshLODModelBulkDatas) m["RawPointIndices"] = c.ByteBulk("uint32 raw point indices");
+            else m["RawPointIndices"] = c.Array(() => r.ReadUInt32(), 4);
+            if (fortnite >= (int)FFortniteMainBranchObjectVersion.NewSkeletalMeshImporterWorkflow && editorVer < (int)FEditorObjectVersion.SkeletalMeshMoveEditorSourceDataToPrivateAsset)
+                throw new FormatException("FRawSkeletalMeshBulkData saved before SkeletalMeshMoveEditorSourceDataToPrivateAsset");
+            if (editorVer >= (int)FEditorObjectVersion.SkeletalMeshMoveEditorSourceDataToPrivateAsset)
+            {
+                m["RawSkeletalMeshBulkDataID"] = c.Str();
+                m["bIsBuildDataAvailable"] = c.Bool();
+                m["bIsRawSkeletalMeshBulkDataEmpty"] = c.Bool();
+            }
+        }
+        m["MeshToImportVertexMap"] = c.Array(() => r.ReadInt32(), 4);
+        m["MaxImportVertex"] = r.ReadInt32();
+        if (audioVisual) m["NumTexCoords"] = r.ReadUInt32();
+        if (skel >= SkinWeightProfiles)
+            m["SkinWeightProfiles"] = c.Array(() => new object[] { c.Name(), new object[] {
+                c.Array(() => ReadRawSkinWeight(r, asset), 8),
+                c.Array(() => new object[] { r.ReadSingle(), r.ReadInt32(), r.ReadInt32() }, 12) } }, 16);
+        return m;
+    }
+
+    /// <summary>SkeletalMeshLODModel.cpp operator&lt;&lt;(FArchive&amp;, FSkelMeshSection&amp;) from CombineSectionWithChunk.</summary>
+    static Dictionary<string, object> ReadSkelMeshSection(Cursor c, AssetBinaryReader r, UAsset asset)
+    {
+        var s = new Dictionary<string, object>();
+        var strip = c.StripFlags(s);
+        bool editor = (strip[0] & 1) == 0, audioVisual = (strip[0] & 2) == 0;
+        int skel = asset.GetCustomVersion(SkeletalMeshGuid), tangent = asset.GetCustomVersion(RecomputeTangentGuid);
+        int anim = asset.GetCustomVersion(AnimGuid), main = asset.GetCustomVersion(UE5MainGuid);
+        s["MaterialIndex"] = r.ReadUInt16();
+        if (audioVisual) { s["BaseIndex"] = r.ReadUInt32(); s["NumTriangles"] = r.ReadUInt32(); }
+        if (skel < RemoveTriangleSorting) s["TriangleSorting_DEPRECATED"] = r.ReadByte();
+        if (asset.ObjectVersion >= ObjectVersion.VER_UE4_APEX_CLOTH)
+        {
+            if (skel < DeprecateSectionDisabledFlag) s["bLegacyClothingSection_DEPRECATED"] = c.Bool();
+            if (skel < RemoveDuplicatedClothingSections) s["CorrespondClothSectionIndex_DEPRECATED"] = r.ReadInt16();
+        }
+        if (asset.ObjectVersion >= ObjectVersion.VER_UE4_APEX_CLOTH_LOD && skel < RemoveEnableClothLOD) s["EnableClothLOD_DEPRECATED"] = r.ReadByte();
+        if (tangent >= RuntimeRecomputeTangent) s["bRecomputeTangent"] = c.Bool();
+        if (tangent >= RecomputeTangentVertexColorMask) s["RecomputeTangentsVertexMaskChannel"] = r.ReadByte();
+        if ((int)asset.GetCustomVersion<FEditorObjectVersion>() >= RefactorMeshEditorMaterials) s["bCastShadow"] = c.Bool();
+        if (main >= SkelMeshSectionVisibleInRayTracingFlagAdded) s["bVisibleInRayTracing"] = c.Bool();
+        if (audioVisual) s["BaseVertexIndex"] = r.ReadUInt32();
+        if (editor)
+        {
+            if (skel < CombineSoftAndRigidVerts) throw new FormatException("section saved before FSkeletalMeshCustomVersion::CombineSoftAndRigidVerts");
+            s["SoftVertices"] = ReadSoftSkinVertices(c, r, asset);
+        }
+        if (anim < IncreaseBoneIndexLimitPerChunk) throw new FormatException("section saved before FAnimObjectVersion::IncreaseBoneIndexLimitPerChunk");
+        s["bUse16BitBoneIndex"] = c.Bool();
+        s["BoneMap"] = c.Array(() => r.ReadUInt16(), 2);
+        if (skel >= SaveNumVertices) s["NumVertices"] = r.ReadInt32();
+        s["MaxBoneInfluences"] = r.ReadInt32();
+        if ((int)asset.GetCustomVersion<FUE5ReleaseStreamObjectVersion>() < (int)FUE5ReleaseStreamObjectVersion.AddClothMappingLODBias)
+            s["ClothMappingDataLODs"] = new object[] { c.Array(() => ReadMeshToMeshVertData(r, asset), 64) };
+        else s["ClothMappingDataLODs"] = c.Array<object>(() => c.Array(() => ReadMeshToMeshVertData(r, asset), 64), 4);
+        if (skel < RemoveDuplicatedClothingSections) throw new FormatException("section saved before FSkeletalMeshCustomVersion::RemoveDuplicatedClothingSections");
+        s["CorrespondClothAssetIndex"] = r.ReadInt16();
+        s["ClothingData"] = new object[] { r.ReadGuid(), r.ReadInt32() };
+        if (asset.GetCustomVersion(OverlappingVerticesGuid) >= DetectOverlappingVertices)
+            s["OverlappingVertices"] = c.Array(() => new object[] { r.ReadInt32(), c.Array(() => r.ReadInt32(), 4) }, 8);
+        if ((int)asset.GetCustomVersion<FReleaseObjectVersion>() >= (int)FReleaseObjectVersion.AddSkeletalMeshSectionDisable) s["bDisabled"] = c.Bool();
+        if (skel >= SectionIgnoreByReduceAdded) s["GenerateUpToLodIndex"] = r.ReadInt32();
+        if ((int)asset.GetCustomVersion<FEditorObjectVersion>() >= (int)FEditorObjectVersion.SkeletalMeshBuildRefactor)
+        {
+            s["OriginalDataSectionIndex"] = r.ReadInt32();
+            s["ChunkedParentSectionIndex"] = r.ReadInt32();
+        }
+        return s;
+    }
+
+    /// <summary>SkeletalMeshLODModel.cpp operator&lt;&lt;(FArchive&amp;, FSoftSkinVertex&amp;), as parallel arrays: positions, tangent
+    /// X, Y and Z (Z with its handedness), four UV channels, colours (FColor, as stored), 12 bone indices and 12 weights.</summary>
+    static Dictionary<string, object> ReadSoftSkinVertices(Cursor c, AssetBinaryReader r, UAsset asset)
+    {
+        int n = c.Count(40);
+        bool packed = asset.GetCustomVersion(RenderingGuid) < IncreaseNormalPrecision;
+        int anim = asset.GetCustomVersion(AnimGuid);
+        bool wideWeights = asset.GetCustomVersion(UE5MainGuid) >= IncreasedSkinWeightPrecision;
+        bool eight = asset.ObjectVersion >= ObjectVersion.VER_UE4_SUPPORT_8_BONE_INFLUENCES_SKELETAL_MESHES;
+        int influences = anim >= UnlimitedBoneInfluences ? 12 : eight ? 8 : 4;
+        var position = new float[n * 3]; var tx = new float[n * 3]; var ty = new float[n * 3]; var tz = new float[n * 4];
+        var uv = new float[n * 8]; var color = new uint[n]; var bones = new ushort[n * 12]; var weights = new ushort[n * 12];
+        void Packed(float[] a, int at, int width)
+        {
+            // FDeprecatedSerializedPackedNormal: four bytes, each mapped from [0, 255] to [-1, 1]
+            for (int k = 0; k < 4; k++) { float v = r.ReadByte() / 127.5f - 1; if (k < width) a[at + k] = v; }
+        }
+        for (int i = 0; i < n; i++)
+        {
+            for (int k = 0; k < 3; k++) position[i * 3 + k] = r.ReadSingle();
+            if (packed) { Packed(tx, i * 3, 3); Packed(ty, i * 3, 3); Packed(tz, i * 4, 4); }
+            else
+            {
+                for (int k = 0; k < 3; k++) tx[i * 3 + k] = r.ReadSingle();
+                for (int k = 0; k < 3; k++) ty[i * 3 + k] = r.ReadSingle();
+                for (int k = 0; k < 4; k++) tz[i * 4 + k] = r.ReadSingle();
+            }
+            for (int k = 0; k < 8; k++) uv[i * 8 + k] = r.ReadSingle();
+            color[i] = r.ReadUInt32();
+            for (int k = 0; k < influences; k++) bones[i * 12 + k] = anim < IncreaseBoneIndexLimitPerChunk ? r.ReadByte() : r.ReadUInt16();
+            if (wideWeights) for (int k = 0; k < 12; k++) weights[i * 12 + k] = r.ReadUInt16();
+            else for (int k = 0; k < influences; k++) { byte w = r.ReadByte(); weights[i * 12 + k] = (ushort)(w << 8 | w); }
+        }
+        return new Dictionary<string, object> { ["Positions"] = position, ["TangentX"] = tx, ["TangentY"] = ty, ["TangentZ"] = tz,
+            ["UVs"] = uv, ["Colors"] = color, ["InfluenceBones"] = bones, ["InfluenceWeights"] = weights };
+    }
+
+    /// <summary>SkeletalMesh.cpp operator&lt;&lt;(FArchive&amp;, FMeshToMeshVertData&amp;): position, normal and tangent barycentric
+    /// coordinates with distance, four source vertex indices, then the weight and padding (before WeightFMeshToMeshVertData,
+    /// two padding words).</summary>
+    static object ReadMeshToMeshVertData(AssetBinaryReader r, UAsset asset)
+    {
+        var bary = new float[12];
+        for (int k = 0; k < 12; k++) bary[k] = r.ReadSingle();
+        var source = new ushort[4];
+        for (int k = 0; k < 4; k++) source[k] = r.ReadUInt16();
+        if ((int)asset.GetCustomVersion<FReleaseObjectVersion>() < (int)FReleaseObjectVersion.WeightFMeshToMeshVertData)
+            return new object[] { bary, source, r.ReadUInt32(), r.ReadUInt32() };
+        return new object[] { bary, source, r.ReadSingle(), r.ReadUInt32() };
+    }
+
+    /// <summary>SkeletalMeshLODModel.cpp operator&lt;&lt;(FArchive&amp;, FSkelMeshSourceSectionUserData&amp;).</summary>
+    static Dictionary<string, object> ReadSkelMeshSourceSectionUserData(Cursor c, AssetBinaryReader r, UAsset asset)
+    {
+        var u = new Dictionary<string, object>();
+        if ((c.StripFlags(u)[0] & 1) != 0) return u;
+        u["bRecomputeTangent"] = c.Bool();
+        if (asset.GetCustomVersion(RecomputeTangentGuid) >= RecomputeTangentVertexColorMask) u["RecomputeTangentsVertexMaskChannel"] = r.ReadByte();
+        u["bCastShadow"] = c.Bool();
+        if (asset.GetCustomVersion(UE5MainGuid) >= SkelMeshSectionVisibleInRayTracingFlagAdded) u["bVisibleInRayTracing"] = c.Bool();
+        u["bDisabled"] = c.Bool();
+        u["GenerateUpToLodIndex"] = r.ReadInt32();
+        u["CorrespondClothAssetIndex"] = r.ReadInt16();
+        u["ClothingData"] = new object[] { r.ReadGuid(), r.ReadInt32() };
+        return u;
+    }
+
+    /// <summary>SkinWeightProfile.cpp operator&lt;&lt;(FArchive&amp;, FRawSkinWeight&amp;): bone indices and weights per influence.</summary>
+    static object ReadRawSkinWeight(AssetBinaryReader r, UAsset asset)
+    {
+        var bones = new ushort[12]; var weights = new ushort[12];
+        int anim = asset.GetCustomVersion(AnimGuid);
+        if (anim < UnlimitedBoneInfluences)
+            for (int k = 0; k < 8; k++) { bones[k] = anim < IncreaseBoneIndexLimitPerChunk ? r.ReadByte() : r.ReadUInt16(); byte w = r.ReadByte(); weights[k] = (ushort)(w << 8 | w); }
+        else if (asset.GetCustomVersion(UE5MainGuid) < IncreasedSkinWeightPrecision)
+            for (int k = 0; k < 12; k++) { bones[k] = r.ReadUInt16(); byte w = r.ReadByte(); weights[k] = (ushort)(w << 8 | w); }
+        else
+            for (int k = 0; k < 12; k++) { bones[k] = r.ReadUInt16(); weights[k] = r.ReadUInt16(); }
+        return new object[] { bones, weights };
     }
 
     /// <summary>
@@ -593,7 +821,7 @@ internal static class ClassSerializers
         d["Flags"] = flags;
         if (asset.ObjectVersion >= ObjectVersion.VER_UE4_SOUND_COMPRESSION_TYPE_ADDED && asset.GetCustomVersion(FrameworkGuid) < 12) d["LegacyCompressionName"] = c.Name();
         if ((flags & 1) != 0) { d["CookedData"] = rest(); return; }
-        d["RawData"] = asset.GetCustomVersion(UE5MainGuid) < 66 ? c.ByteBulk() : c.EditorBulk();
+        d["RawData"] = asset.GetCustomVersion(UE5MainGuid) < 66 ? c.ByteBulk("sound wave audio") : c.EditorBulk();
         d["CompressedDataGuid"] = r.ReadGuid();
     }
 
@@ -619,9 +847,9 @@ internal static class ClassSerializers
         if (v >= 1) d["TargetRuntimes"] = c.Array(c.Str, 4);
         if (v == 1) d["AssetImportData"] = new FPackageIndex(r);
         d["FileType"] = c.Str();
-        d["FileData"] = v >= 4 ? c.Bytes64() : c.Bytes();
-        if (v >= 3) d["AdditionalFileData"] = c.Array(() => new object[] { c.Str(), v >= 4 ? c.Bytes64() : c.Bytes() }, 8);
-        if (v >= 5) d["RuntimeSettings"] = c.Array(() => new object[] { c.Str(), c.Bytes64() }, 12);
+        d["FileData"] = new Payload("NNE model file", v >= 4 ? c.Bytes64() : c.Bytes());
+        if (v >= 3) d["AdditionalFileData"] = c.Array(() => new object[] { c.Str(), new Payload("NNE model file", v >= 4 ? c.Bytes64() : c.Bytes()) }, 8);
+        if (v >= 5) d["RuntimeSettings"] = c.Array(() => new object[] { c.Str(), new Payload("NNE runtime settings", c.Bytes64()) }, 12);
         d["FileId"] = r.ReadGuid();
         d["ModelData"] = c.Array<object>(() =>
         {
@@ -704,7 +932,7 @@ internal static class ClassSerializers
         if (asset.GetCustomVersion(AnimGuid) >= 14) { classFlags = r.ReadByte(); d["ClassDataStripFlags"] = classFlags; }
         if ((strip[0] & 1) != 0) { d["PlatformData"] = rest(); return; }
         if (asset.GetCustomVersion(UE5MainGuid) < 110 && (classFlags & 1) == 0) { d["LegacyData"] = rest(); return; }
-        object HairDescription() => asset.GetCustomVersion(UE5MainGuid) < 92 ? new object[] { c.ByteBulk(), r.ReadGuid() } : c.EditorBulk();
+        object HairDescription() => asset.GetCustomVersion(UE5MainGuid) < 92 ? new object[] { c.ByteBulk("groom hair description"), r.ReadGuid() } : c.EditorBulk();
         d["SourceHairDescription"] = HairDescription();
         string type = (export.Data?.Find(p => p.Name?.ToString() == "HairDescriptionType") as EnumPropertyData)?.Value?.ToString();
         if (type != null && type.EndsWith("Edit")) d["EditHairDescription"] = HairDescription();
@@ -788,7 +1016,7 @@ internal static class ClassSerializers
         d["bValid"] = valid;
         if (!valid) return;
         if (asset.GetCustomVersion(RenderingGuid) >= 2) d["CubemapSize"] = r.ReadInt32();
-        d["CompressedCapturedData"] = c.Bytes();
+        d["CompressedCapturedData"] = new Payload("compressed reflection cubemap", c.Bytes());
     }
 
     /// <summary>
@@ -900,7 +1128,7 @@ internal static class ClassSerializers
             int Count(string name) => export.Data?.Find(p => p.Name?.ToString() == name) is ArrayPropertyData a ? a.Value.Length : 0;
             int cylinders = Count("CylinderCollision"), boxes = Count("BoxCollision");
             bool process = version >= 4 ? gather || boxes > 0 || cylinders > 0 : gather || (cylinders == 0 && boxes == 0);
-            if (process) d["CookedFormatData"] = c.Array(() => new object[] { c.Name(), c.ByteBulk() }, 24);
+            if (process) d["CookedFormatData"] = c.Array(() => new object[] { c.Name(), c.ByteBulk("cooked navigation collision") }, 24);
         }
         if (version >= 2) d["AreaClass"] = new FPackageIndex(r);
     }
@@ -978,12 +1206,12 @@ internal static class ClassSerializers
                 if (land >= 4) g["HeightMipData"] = c.Array(() => new object[] { r.ReadInt32(), c.Array(() => r.ReadUInt16(), 2) }, 8);
                 else { g["CollisionHeightData"] = c.Bulk(); g["SimpleCollisionHeightData"] = c.Bulk(); }
             }
-            if (fn < 54) g["DeprecatedWeightData"] = c.Array(() => new object[] { new FPackageIndex(r), c.Bytes() }, 8);
+            if (fn < 54) g["DeprecatedWeightData"] = c.Array(() => new object[] { new FPackageIndex(r), new Payload("landscape weightmap", c.Bytes()) }, 8);
             else
             {
                 g["NumElements"] = r.ReadInt32();
                 g["WeightOffsets"] = c.Array(() => new object[] { fn < 253 ? new FPackageIndex(r) : c.Name(), r.ReadInt32() }, 8);
-                g["HeightWeightData"] = c.Bytes();
+                g["HeightWeightData"] = new Payload("landscape height and weight data", c.Bytes());
             }
             d["GrassData"] = g;
         }
@@ -1028,7 +1256,8 @@ internal static class ClassSerializers
             return t;
         }
         /// <summary>FStripDataFlags: the global and class strip flags.</summary>
-        public byte[] StripFlags(Dictionary<string, object> d, string key = "StripFlags") { var s = r.ReadBytes(2); d[key] = s; return s; }
+        // FStripDataFlags: the global flags (bit 0 editor data, bit 1 audio-visual data stripped), then the class's own
+        public byte[] StripFlags(Dictionary<string, object> d, string key = "StripFlags") { var s = r.ReadBytes(2); d[key] = new Dictionary<string, object> { ["Global"] = s[0], ["Class"] = s[1] }; return s; }
         /// <summary>
         /// TArray::BulkSerialize: the element size, then the elements; an editor save writes them one by one, which for these
         /// types matches their memory layout. <paramref name="elementSize"/> overrides the stored size where per-element
@@ -1048,7 +1277,13 @@ internal static class ClassSerializers
         /// payload's meta with BULKDATA_DuplicateNonOptionalPayload, then the payload when it is inline (not at the end of the
         /// file, in a separate file or unused).
         /// </summary>
-        public object[] ByteBulk()
+        public Dictionary<string, object> ByteBulk(string format)
+        {
+            var bulk = ByteBulk();
+            if (bulk["Payload"] is byte[] bytes) bulk["Payload"] = new Payload(format, bytes);
+            return bulk;
+        }
+        public Dictionary<string, object> ByteBulk()
         {
             uint flags = r.ReadUInt32();
             bool wide = (flags & (1u << 13)) != 0;
@@ -1062,20 +1297,22 @@ internal static class ClassSerializers
                 if (size > r.BaseStream.Length - r.BaseStream.Position) throw new FormatException($"Inline bulk data of {size} bytes overruns the export");
                 payload = r.ReadBytes((int)size);
             }
-            return new object[] { flags, count, size, offset, duplicate, payload };
+            return new Dictionary<string, object> { ["Flags"] = flags, ["ElementCount"] = count, ["SizeOnDisk"] = size,
+                ["OffsetInFile"] = offset, ["DuplicatePayload"] = duplicate, ["Payload"] = payload };
         }
         /// <summary>
         /// EditorBulkData.cpp FEditorBulkData::Serialize: flags, bulk data ID, payload hash (FIoHash) and size, then the payload's
         /// offset in the file unless it is in the package trailer, virtualized or cooked.
         /// </summary>
-        public object[] EditorBulk()
+        public Dictionary<string, object> EditorBulk()
         {
             uint flags = r.ReadUInt32();
             var id = r.ReadGuid();
             var hash = r.ReadBytes(20);
             long size = r.ReadInt64();
             long? offset = (flags & ((1u << 9) | 1u | (1u << 10))) == 0 ? r.ReadInt64() : null;
-            return new object[] { flags, id, hash, size, offset };
+            return new Dictionary<string, object> { ["Flags"] = flags, ["BulkDataId"] = id, ["PayloadHash"] = Convert.ToHexString(hash),
+                ["PayloadSize"] = size, ["PayloadOffset"] = offset };
         }
         public string Str() => r.ReadFString()?.Value;
         public object Name() => r.ReadFName().ToString();
@@ -1112,4 +1349,57 @@ internal static class ClassSerializers
             };
         }, 8);
     }
+    /// <summary>MorphTarget.cpp operator&lt;&lt;(FArchive&amp;, FMorphTargetLODModel&amp;): the vertex deltas (position delta,
+    /// tangent-Z delta and source vertex index, as three parallel arrays), the base mesh's vertex count, the section indices,
+    /// whether the engine generated the morph, and its source file.</summary>
+    static Dictionary<string, object> ReadMorphTargetLODModel(Cursor c, AssetBinaryReader r, UAsset asset)
+    {
+        var m = new Dictionary<string, object>();
+        int editor = (int)asset.GetCustomVersion<FEditorObjectVersion>();
+        int fortnite = (int)asset.GetCustomVersion<FFortniteMainBranchObjectVersion>();
+        void Vertices()
+        {
+            int n = c.Count(28);
+            bool packedTangent = asset.ObjectVersion < ObjectVersion.VER_UE4_MORPHTARGET_CPU_TANGENTZDELTA_FORMATCHANGE;
+            var position = new float[n * 3]; var tangent = new float[n * 3]; var source = new uint[n];
+            for (int i = 0; i < n; i++)
+            {
+                for (int k = 0; k < 3; k++) position[i * 3 + k] = r.ReadSingle();
+                if (packedTangent)
+                {
+                    // FDeprecatedSerializedPackedNormal: four bytes, each a component mapped from [0, 255] to [-1, 1]
+                    for (int k = 0; k < 3; k++) tangent[i * 3 + k] = r.ReadByte() / 127.5f - 1;
+                    r.ReadByte();
+                }
+                else for (int k = 0; k < 3; k++) tangent[i * 3 + k] = r.ReadSingle();
+                source[i] = r.ReadUInt32();
+            }
+            m["PositionDeltas"] = position; m["TangentZDeltas"] = tangent; m["SourceIndices"] = source;
+        }
+        if (editor < (int)FEditorObjectVersion.AddedMorphTargetSectionIndices) { Vertices(); m["NumBaseMeshVerts"] = r.ReadInt32(); }
+        else if (fortnite < (int)FFortniteMainBranchObjectVersion.SaveGeneratedMorphTargetByEngine)
+        {
+            Vertices(); m["NumBaseMeshVerts"] = r.ReadInt32(); m["SectionIndices"] = c.Array(() => r.ReadInt32(), 4);
+        }
+        else
+        {
+            bool stripped = asset.GetCustomVersion<FUE5SpecialProjectStreamObjectVersion>() >= FUE5SpecialProjectStreamObjectVersion.StripMorphTargetSourceDataForCookedBuilds && c.Bool();
+            m["bVerticesAreStrippedForCookedBuilds"] = stripped;
+            if (stripped) m["NumVertices"] = r.ReadInt32(); else Vertices();
+            m["NumBaseMeshVerts"] = r.ReadInt32();
+            m["SectionIndices"] = c.Array(() => r.ReadInt32(), 4);
+            m["bGeneratedByEngine"] = c.Bool();
+        }
+        if (fortnite >= (int)FFortniteMainBranchObjectVersion.MorphTargetCustomImport) m["SourceFilename"] = c.Str();
+        return m;
+    }
+
+}
+
+/// <summary>Bytes whose format is their own rather than a serialized engine structure, named by that format.</summary>
+public sealed class Payload
+{
+    [JsonProperty] public string Format;
+    [JsonProperty] public byte[] Data;
+    public Payload(string format, byte[] data) { Format = format; Data = data; }
 }

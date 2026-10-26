@@ -1,3 +1,4 @@
+using UAssetAPI.JSON;
 using Newtonsoft.Json;
 using System;
 using System.Collections.Concurrent;
@@ -308,10 +309,10 @@ public class NativeClassTailData
     [JsonProperty] public byte? RigVMMemoryType;
     /// <summary>The VM a RigVM or Control Rig blueprint generated class serializes inline, decoded, and its bytes as stored.</summary>
     [JsonProperty] public RigVMData EmbeddedVM;
-    [JsonProperty] public byte[] EmbeddedVMBytes;
+    [JsonProperty, WriteBackCopy] public byte[] EmbeddedVMBytes;
     /// <summary>The class's graph function store: its public functions, and their bytes for writing.</summary>
     [JsonProperty] public List<Dictionary<string, object>> GraphFunctions;
-    [JsonProperty] public byte[] GraphFunctionStoreBytes;
+    [JsonProperty, WriteBackCopy] public byte[] GraphFunctionStoreBytes;
     /// <summary>
     /// UAFAnimGraph/Graph/AnimNextAnimationGraph.cpp UUAFAnimGraph::Serialize: the graph's compiled shared data, written by the
     /// trait writer. The engine reads it only from cooked packages; the editor recompiles the graph from its editor data.
@@ -331,8 +332,8 @@ public class NativeClassTailData
     [JsonProperty] public Dictionary<string, object> ClassFields;
     /// <summary>StaticMesh.cpp, before SerializeMeshDescriptionBase: each source model's inline mesh description, and their bytes.</summary>
     [JsonProperty] public List<object> StaticMeshLegacyDescriptions;
-    [JsonProperty] public byte[] StaticMeshLegacyDescriptionBytes;
-    [JsonProperty] public byte[] ClassFieldBytes;
+    [JsonProperty, WriteBackCopy] public byte[] StaticMeshLegacyDescriptionBytes;
+    [JsonProperty, WriteBackCopy] public byte[] ClassFieldBytes;
 }
 
 public class FSimpleMemberReferenceData
