@@ -39,7 +39,7 @@ public class RigVMData
     // FUE5MainStreamObjectVersion, FFortniteMainBranchObjectVersion, FUE5ReleaseStreamObjectVersion, FAnimObjectVersion
     const int RigVMCopyOpStoreNumBytes = 43, RigVMMemoryStorageObject = 52, RigVMLazyEvaluation = 94, RigVMSerializeExecuteContextStruct = 97,
         RigVMExternalExecuteContextStruct = 114, RigVMSaveSerializedGraphInGraphFunctionData = 101, RigVMByteCodeDeterminism = 36, FortniteRigVMSaveDebugMap = 113, ReleaseRigVMSaveDebugMap = 44,
-        StoreMarkerNamesOnSkeleton = 2, SerializeRigVMEntries = 10;
+        StoreMarkerNamesOnSkeleton = 2, SerializeRigVMRegisterArrayState = 3, SerializeRigVMRegisterDynamicState = 8, SerializeRigVMEntries = 10;
 
     static readonly string[] OpCodes = BuildOpCodes();
     static string[] BuildOpCodes()
@@ -91,7 +91,23 @@ public class RigVMData
             if (ue5 >= RigVMMemoryStorageObject) storage = r.ReadInt32();
             Fields["ClassBasedStorage"] = storage;
             if (ue5 < RigVMExternalExecuteContextStruct && ue5 >= RigVMSerializeExecuteContextStruct) Fields["ExecuteContextPath"] = c.Str();
-            if (storage != 0) { LegacyDiscardedOnLoad = true; consumed = Data.Length; return; }
+            if (storage != 0)
+            {
+                // URigVM::Load reads the class-based storage, then resets the VM
+                LegacyDiscardedOnLoad = true;
+                Fields["WorkMemory"] = ReadLegacyMemoryContainer(r, c, anim);
+                Fields["LiteralMemory"] = ReadLegacyMemoryContainer(r, c, anim);
+                Fields["FunctionNames"] = c.Array(c.Name, 8);
+                ReadByteCode(r, c, vm, ue5, fortnite, anim);
+                Fields["Parameters"] = c.Array(() => new object[] { r.ReadByte(), c.Name(), r.ReadInt32(), c.Str(), c.Name() }, 21);
+                if (ue5 >= RigVMCopyOpStoreNumBytes)
+                {
+                    if (vm >= VMStoringUserDefinedStructMap && vm < HostStoringUserDefinedData) UserDefinedMap("UserDefinedStructGuidToPathName");
+                    if (vm >= VMStoringUserDefinedEnumMap && vm < HostStoringUserDefinedData) UserDefinedMap("UserDefinedEnumToPathName");
+                }
+                End(r);
+                return;
+            }
         }
         if (vm >= AddedVMHashChecks) Fields["CachedVMHash"] = r.ReadUInt32();
         Fields["ExternalPropertyPathDescriptions"] = c.Array(c.PathDescription, 12);
@@ -241,6 +257,62 @@ public class RigVMData
     {
         consumed = (int)r.BaseStream.Position;
         if (requireEnd && r.BaseStream.Position != r.BaseStream.Length) throw new FormatException($"{r.BaseStream.Length - r.BaseStream.Position} bytes after the VM");
+    }
+
+    /// <summary>RigVMCore/RigVMMemoryDeprecated.cpp FRigVMMemoryContainer::Load: the name-map flag, memory type, registers,
+    /// register offsets, script struct paths and total bytes, then each register's values (Plain as bytes, Name as names,
+    /// String as strings, Struct as one ImportText string per element; dynamic registers save empty arrays, one per slice
+    /// when nested).</summary>
+    static object ReadLegacyMemoryContainer(AssetBinaryReader r, Cursor c, int anim)
+    {
+        if (anim < StoreMarkerNamesOnSkeleton) return null;
+        int release = (int)r.Asset.GetCustomVersion<FReleaseObjectVersion>();
+        var d = new Dictionary<string, object> { ["UseNameMap"] = c.Bool(), ["MemoryType"] = r.ReadByte() };
+        // FRigVMRegister::Serialize and Load
+        var registers = c.Array(() => new Dictionary<string, object>
+        {
+            ["Type"] = r.ReadByte(), ["ByteIndex"] = r.ReadUInt32(), ["ElementSize"] = r.ReadUInt16(), ["ElementCount"] = r.ReadUInt16(),
+            ["SliceIndex"] = r.ReadUInt16(), ["SliceCount"] = r.ReadUInt16(), ["AlignmentBytes"] = r.ReadByte(), ["TrailingBytes"] = r.ReadUInt16(),
+            ["Name"] = c.Name(), ["ScriptStructIndex"] = r.ReadInt32(),
+            ["IsArray"] = anim >= SerializeRigVMRegisterArrayState && c.Bool(),
+            ["IsDynamic"] = anim >= SerializeRigVMRegisterDynamicState && c.Bool(),
+        }, 26);
+        d["Registers"] = registers;
+        // FRigVMRegisterOffset::Serialize and Load
+        d["RegisterOffsets"] = c.Array(() =>
+        {
+            var o = new Dictionary<string, object> { ["Segments"] = c.Array(() => r.ReadInt32(), 4), ["Type"] = r.ReadByte(), ["CPPType"] = c.Name() };
+            o["ScriptStruct"] = release < (int)FReleaseObjectVersion.SerializeRigVMOffsetSegmentPaths ? c.Name() : new FPackageIndex(r);
+            o["ElementSize"] = r.ReadUInt16();
+            if (release >= (int)FReleaseObjectVersion.SerializeRigVMOffsetSegmentPaths)
+            {
+                o["ParentScriptStruct"] = new FPackageIndex(r);
+                o["SegmentPath"] = c.Str();
+                o["ArrayIndex"] = r.ReadInt32();
+            }
+            return o;
+        }, 15);
+        d["ScriptStructPaths"] = c.Array(c.Str, 4);
+        d["TotalBytes"] = r.ReadUInt64();
+        object View(byte type) => type switch
+        {
+            0 => r.ReadBytes(c.Count(1)),
+            1 => c.Array(c.Str, 4),
+            2 => c.Array(c.Name, 8),
+            3 => c.Array(c.Str, 4),
+            _ => throw new FormatException($"Invalid register type {type}"),
+        };
+        var values = new List<object>(registers.Count);
+        foreach (var reg in registers)
+        {
+            byte type = (byte)reg["Type"];
+            bool dynamic = (bool)reg["IsDynamic"], nested = dynamic && (bool)reg["IsArray"];
+            if ((ushort)reg["ElementCount"] == 0 && !dynamic) { values.Add(null); continue; }
+            if (!nested) values.Add(View(type));
+            else { var slices = new List<object>(); for (int i = 0; i < (ushort)reg["SliceCount"]; i++) slices.Add(View(type)); values.Add(slices); }
+        }
+        d["Values"] = values;
+        return d;
     }
 
     /// <summary>RigVMCore/RigVMMemoryStorageStruct.cpp: the FInstancedPropertyBag, then the memory type and property paths.</summary>

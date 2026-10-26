@@ -102,8 +102,9 @@ public class ArrayPropertyData : PropertyData<PropertyData[]>
         if (ArrayType == null && PropertyTypeName != null && PropertyTypeName.GetParameter(0) != null) ArrayType = PropertyTypeName.GetParameter(0).GetName();
 
         FName arrayStructType = null;
-        // before VER_UE4_INNER_ARRAY_TAG_INFO a struct array names no element struct, so the mappings supply it
-        bool needsStructType = ArrayType?.Value?.Value == "StructProperty" && reader.Asset.ObjectVersion < ObjectVersion.VER_UE4_INNER_ARRAY_TAG_INFO;
+        // before VER_UE4_INNER_ARRAY_TAG_INFO a struct array names no element struct, and a set's elements never carry an
+        // inner tag, so before PROPERTY_TAG_COMPLETE_TYPE_NAME the mappings supply it
+        bool needsStructType = ArrayType?.Value?.Value == "StructProperty" && (reader.Asset.ObjectVersion < ObjectVersion.VER_UE4_INNER_ARRAY_TAG_INFO || !ShouldSerializeStructsDifferently);
         if (reader.Asset.Mappings != null && (ArrayType == null || needsStructType) && reader.Asset.Mappings.TryGetPropertyData(Name, Ancestry, reader.Asset, out UsmapArrayData strucDat1))
         {
             ArrayType ??= FName.DefineDummy(reader.Asset, strucDat1.InnerType.Type.ToString());
@@ -238,7 +239,7 @@ public class ArrayPropertyData : PropertyData<PropertyData[]>
             {
                 results[i] = MainSerializer.TypeToClass(ArrayType, FName.DefineDummy(reader.Asset, i.ToString(), int.MinValue), Ancestry, Name, null, reader.Asset, propertyTypeName: propTypeName);
                 results[i].Offset = reader.BaseStream.Position;
-                if (results[i] is StructPropertyData data) data.StructType = arrayStructType == null ? FName.DefineDummy(reader.Asset, "Generic") : arrayStructType;
+                if (results[i] is StructPropertyData data) data.StructType = arrayStructType ?? propTypeName?.GetParameter(0)?.GetName() ?? FName.DefineDummy(reader.Asset, "Generic");
                 results[i].Read(reader, false, averageSizeEstimate, 0, PropertySerializationContext.Array);
             }
 

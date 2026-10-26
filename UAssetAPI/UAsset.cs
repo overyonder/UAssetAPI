@@ -745,6 +745,13 @@ namespace UAssetAPI
         /// </summary>
         public static readonly Dictionary<string, string> MountPoints = new(StringComparer.OrdinalIgnoreCase);
 
+        /// <summary>
+        /// Plugin content directories by project directory, then mount point (the .uplugin's name). The engine mounts a
+        /// project plugin by its name wherever it sits under Plugins, such as Plugins/GameFeatures/ShooterCore. Filled by
+        /// the caller.
+        /// </summary>
+        public static readonly Dictionary<string, Dictionary<string, string>> ProjectMountPoints = new();
+
         public virtual string FindAssetOnDiskFromPath(string path)
         {
             if (!path.StartsWith("/") || path.StartsWith("/Script")) return null;
@@ -759,6 +766,19 @@ namespace UAssetAPI
                 if (File.Exists(candidate)) return candidate;
                 candidate = Path.ChangeExtension(candidate, ".umap");
                 if (File.Exists(candidate)) return candidate;
+            }
+
+            if (pathPrefixPart != "Game" && !string.IsNullOrEmpty(FilePath))
+            {
+                string full = Path.GetFullPath(FilePath);
+                foreach (var project in ProjectMountPoints)
+                {
+                    if (!full.StartsWith(project.Key + Path.DirectorySeparatorChar) || !project.Value.TryGetValue(pathPrefixPart, out var content)) continue;
+                    string candidate = Path.Combine(content, pathNoPrefix.FixDirectorySeparatorsForDisk());
+                    if (File.Exists(candidate)) return candidate;
+                    candidate = Path.ChangeExtension(candidate, ".umap");
+                    if (File.Exists(candidate)) return candidate;
+                }
             }
 
             string mappedPathOnDisk = string.Empty;
@@ -1136,11 +1156,11 @@ namespace UAssetAPI
                         Exports[i] = Exports[i].ConvertToChildExport<MetaDataExport>();
                         break;
                     default:
-                        if (exportClassType.EndsWith("DataTable"))
+                        if (NativeClassTailTable.DataTableDerived.Contains(exportClassType))
                         {
                             Exports[i] = Exports[i].ConvertToChildExport<DataTableExport>();
                         }
-                        else if (exportClassType.EndsWith("StringTable"))
+                        else if (NativeClassTailTable.StringTableDerived.Contains(exportClassType))
                         {
                             Exports[i] = Exports[i].ConvertToChildExport<StringTableExport>();
                         }

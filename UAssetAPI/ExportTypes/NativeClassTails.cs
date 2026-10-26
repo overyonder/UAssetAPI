@@ -75,6 +75,122 @@ public class FStaticMaterialData
     [JsonProperty] public FPackageIndex OverlayMaterialInterface;
 }
 
+/// <summary>SpeedTreeWind.cpp operator&lt;&lt;(FArchive&amp;, FSpeedTreeWind&amp;): the wind parameters, shader options,
+/// branch anchor and maximum branch length. Curves hold NUM_WIND_POINTS_IN_CURVE (10) points.</summary>
+public class FSpeedTreeWindData
+{
+    public class Branch
+    {
+        [JsonProperty] public float[] Distance, DirectionAdherence, Whip;
+        [JsonProperty] public float Turbulence, Twitch, TwitchFreqScale;
+    }
+    public class Leaf
+    {
+        [JsonProperty] public float[] RippleDistance, TumbleFlip, TumbleTwist, TumbleDirectionAdherence, TwitchThrow;
+        [JsonProperty] public float TwitchSharpness, RollMaxScale, RollMinScale, RollSpeed, RollSeparation, LeewardScalar;
+    }
+    [JsonProperty] public float StrengthResponse, DirectionResponse, AnchorOffset, AnchorDistanceScale;
+    /// <summary>One curve per EOscillationComponents entry (NUM_OSC_COMPONENTS = 10).</summary>
+    [JsonProperty] public float[][] Frequencies;
+    [JsonProperty] public float GlobalHeight, GlobalHeightExponent;
+    [JsonProperty] public float[] GlobalDistance, GlobalDirectionAdherence;
+    [JsonProperty] public Branch[] Branches;
+    /// <summary>Four rolling values discarded on load, saved before VER_UE4_SPEEDTREE_WIND_V7.</summary>
+    [JsonProperty] public float[] OldRolling;
+    [JsonProperty] public Leaf[] Leaves;
+    [JsonProperty] public float[] FrondRippleDistance;
+    [JsonProperty] public float FrondRippleTile, FrondRippleLightingScalar;
+    /// <summary>From VER_UE4_SPEEDTREE_WIND_V7: RollingNoiseSize, Twist, Turbulence, Period, Speed, RollingBranchFieldMin,
+    /// LightingAdjust, VerticalOffset, RollingLeafRippleMin, RollingLeafTumbleMin.</summary>
+    [JsonProperty] public float[] Rolling;
+    [JsonProperty] public float GustFrequency, GustStrengthMin, GustStrengthMax, GustDurationMin, GustDurationMax, GustRiseScalar, GustFallScalar;
+    /// <summary>EOptions in serialization order; before V7 the discarded slot after each branch and leaf group's fifth
+    /// option is kept in place, and ROLLING is absent.</summary>
+    [JsonProperty] public bool[] Options;
+    [JsonProperty] public double[] BranchAnchor;
+    [JsonProperty] public float MaxBranchLength;
+
+    const int CurvePoints = 10, OscComponents = 10;
+
+    static float[] Floats(AssetBinaryReader r, int n) { var a = new float[n]; for (int i = 0; i < n; i++) a[i] = r.ReadSingle(); return a; }
+    static void Floats(AssetBinaryWriter w, float[] a) { foreach (var f in a) w.Write(f); }
+
+    public static FSpeedTreeWindData Read(AssetBinaryReader r, UAsset asset)
+    {
+        bool v7 = asset.ObjectVersion >= ObjectVersion.VER_UE4_SPEEDTREE_WIND_V7;
+        var d = new FSpeedTreeWindData
+        {
+            StrengthResponse = r.ReadSingle(), DirectionResponse = r.ReadSingle(),
+            AnchorOffset = r.ReadSingle(), AnchorDistanceScale = r.ReadSingle(),
+        };
+        d.Frequencies = new float[OscComponents][];
+        for (int i = 0; i < OscComponents; i++) d.Frequencies[i] = Floats(r, CurvePoints);
+        d.GlobalHeight = r.ReadSingle(); d.GlobalHeightExponent = r.ReadSingle();
+        d.GlobalDistance = Floats(r, CurvePoints); d.GlobalDirectionAdherence = Floats(r, CurvePoints);
+        d.Branches = new Branch[2];
+        for (int i = 0; i < 2; i++)
+            d.Branches[i] = new Branch
+            {
+                Distance = Floats(r, CurvePoints), DirectionAdherence = Floats(r, CurvePoints), Whip = Floats(r, CurvePoints),
+                Turbulence = r.ReadSingle(), Twitch = r.ReadSingle(), TwitchFreqScale = r.ReadSingle(),
+            };
+        if (!v7) d.OldRolling = Floats(r, 4);
+        d.Leaves = new Leaf[2];
+        for (int i = 0; i < 2; i++)
+            d.Leaves[i] = new Leaf
+            {
+                RippleDistance = Floats(r, CurvePoints), TumbleFlip = Floats(r, CurvePoints), TumbleTwist = Floats(r, CurvePoints),
+                TumbleDirectionAdherence = Floats(r, CurvePoints), TwitchThrow = Floats(r, CurvePoints),
+                TwitchSharpness = r.ReadSingle(), RollMaxScale = r.ReadSingle(), RollMinScale = r.ReadSingle(),
+                RollSpeed = r.ReadSingle(), RollSeparation = r.ReadSingle(), LeewardScalar = r.ReadSingle(),
+            };
+        d.FrondRippleDistance = Floats(r, CurvePoints);
+        d.FrondRippleTile = r.ReadSingle(); d.FrondRippleLightingScalar = r.ReadSingle();
+        if (v7) d.Rolling = Floats(r, 10);
+        d.GustFrequency = r.ReadSingle(); d.GustStrengthMin = r.ReadSingle(); d.GustStrengthMax = r.ReadSingle();
+        d.GustDurationMin = r.ReadSingle(); d.GustDurationMax = r.ReadSingle();
+        d.GustRiseScalar = r.ReadSingle(); d.GustFallScalar = r.ReadSingle();
+        // 2 global, 2 x 6 branch, 2 x 5 leaf, 3 frond options; pre-V7 adds 4 discarded slots, V7 adds ROLLING
+        d.Options = new bool[v7 ? 28 : 31];
+        for (int i = 0; i < d.Options.Length; i++) d.Options[i] = r.ReadBooleanInt();
+        bool lwc = asset.ObjectVersionUE5 >= ObjectVersionUE5.LARGE_WORLD_COORDINATES;
+        d.BranchAnchor = new double[3];
+        for (int i = 0; i < 3; i++) d.BranchAnchor[i] = lwc ? r.ReadDouble() : r.ReadSingle();
+        d.MaxBranchLength = r.ReadSingle();
+        return d;
+    }
+
+    public void Write(AssetBinaryWriter w, UAsset asset)
+    {
+        w.Write(StrengthResponse); w.Write(DirectionResponse); w.Write(AnchorOffset); w.Write(AnchorDistanceScale);
+        foreach (var c in Frequencies) Floats(w, c);
+        w.Write(GlobalHeight); w.Write(GlobalHeightExponent);
+        Floats(w, GlobalDistance); Floats(w, GlobalDirectionAdherence);
+        foreach (var b in Branches)
+        {
+            Floats(w, b.Distance); Floats(w, b.DirectionAdherence); Floats(w, b.Whip);
+            w.Write(b.Turbulence); w.Write(b.Twitch); w.Write(b.TwitchFreqScale);
+        }
+        if (OldRolling != null) Floats(w, OldRolling);
+        foreach (var l in Leaves)
+        {
+            Floats(w, l.RippleDistance); Floats(w, l.TumbleFlip); Floats(w, l.TumbleTwist);
+            Floats(w, l.TumbleDirectionAdherence); Floats(w, l.TwitchThrow);
+            w.Write(l.TwitchSharpness); w.Write(l.RollMaxScale); w.Write(l.RollMinScale);
+            w.Write(l.RollSpeed); w.Write(l.RollSeparation); w.Write(l.LeewardScalar);
+        }
+        Floats(w, FrondRippleDistance);
+        w.Write(FrondRippleTile); w.Write(FrondRippleLightingScalar);
+        if (Rolling != null) Floats(w, Rolling);
+        w.Write(GustFrequency); w.Write(GustStrengthMin); w.Write(GustStrengthMax);
+        w.Write(GustDurationMin); w.Write(GustDurationMax); w.Write(GustRiseScalar); w.Write(GustFallScalar);
+        foreach (var o in Options) w.WriteBooleanInt(o);
+        bool lwc = asset.ObjectVersionUE5 >= ObjectVersionUE5.LARGE_WORLD_COORDINATES;
+        foreach (var v in BranchAnchor) { if (lwc) w.Write(v); else w.Write((float)v); }
+        w.Write(MaxBranchLength);
+    }
+}
+
 /// <summary>PCGSettings.h FPCGSettingsAndCulling: a settings object and whether its key is culled.</summary>
 public class FPCGTrackedSettings
 {
@@ -172,6 +288,7 @@ public class NativeClassTailData
     /// <summary>Per source model, the mesh-description-valid flag saved between StaticMeshDeprecatedRawMesh and SerializeMeshDescriptionBase.</summary>
     [JsonProperty] public List<bool> StaticMeshLegacyDescriptionValid;
     [JsonProperty] public bool? StaticMeshHasSpeedTreeWind;
+    [JsonProperty] public FSpeedTreeWindData StaticMeshSpeedTreeWind;
     [JsonProperty] public List<FStaticMaterialData> StaticMeshMaterials;
     /// <summary>Animation/AnimationAsset.cpp: the skeleton's GUID when the asset was saved.</summary>
     [JsonProperty] public Guid? SkeletonGuid;
@@ -293,7 +410,7 @@ public static class NativeClassTails
         if (asset.ObjectVersion >= ObjectVersion.VER_UE4_SPEEDTREE_STATICMESH)
         {
             data.StaticMeshHasSpeedTreeWind = reader.ReadBooleanInt();
-            if (data.StaticMeshHasSpeedTreeWind == true) return false;
+            if (data.StaticMeshHasSpeedTreeWind == true) data.StaticMeshSpeedTreeWind = FSpeedTreeWindData.Read(reader, asset);
         }
         if (asset.GetCustomVersion<FEditorObjectVersion>() < FEditorObjectVersion.RefactorMeshEditorMaterials) return false;
         int n = reader.ReadInt32();
@@ -370,6 +487,7 @@ public static class NativeClassTails
         foreach (var s in data.StaticMeshSockets) s.Write(writer);
         if (data.StaticMeshLegacyDescriptionBytes != null) writer.Write(data.StaticMeshLegacyDescriptionBytes);
         if (data.StaticMeshHasSpeedTreeWind != null) writer.WriteBooleanInt(data.StaticMeshHasSpeedTreeWind.Value);
+        data.StaticMeshSpeedTreeWind?.Write(writer, (UAsset)writer.Asset);
         writer.Write(data.StaticMeshMaterials.Count);
         foreach (var m in data.StaticMeshMaterials)
         {

@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Newtonsoft.Json;
 using System;
 using System.Linq;
@@ -49,6 +50,21 @@ public class MapPropertyData : PropertyData
         Value = new TMap<PropertyData, PropertyData>();
     }
 
+    /// <summary>
+    /// Key and value struct names of project map properties, by owning type and property name (reflected names), for
+    /// packages whose tags don't name them and which no mappings describe. A (null, name) entry stands for a name only one
+    /// owner declares. Filled by the caller through <see cref="AddProjectMapStructTypes"/>.
+    /// </summary>
+    public static readonly Dictionary<(string Owner, string Name), (string Key, string Value)> ProjectMapStructTypes = new();
+
+    /// <summary>Adds one map property's struct types; empty when that side isn't a struct.</summary>
+    public static void AddProjectMapStructTypes(string owner, string name, string key, string value)
+    {
+        ProjectMapStructTypes[(owner, name)] = (key, value);
+        if (ProjectMapStructTypes.TryGetValue((null, name), out var existing)) { if (existing != (key, value)) ProjectMapStructTypes[(null, name)] = (null, null); }
+        else ProjectMapStructTypes[(null, name)] = (key, value);
+    }
+
     private static readonly FString CurrentPropertyType = new FString("MapProperty");
     public override FString PropertyType { get { return CurrentPropertyType; } }
 
@@ -85,6 +101,17 @@ public class MapPropertyData : PropertyData
                         strucType = FName.DefineDummy(reader.Asset, reader.Asset.MapStructTypeOverride[name.Value.Value].Item2);
                         if (name.Value.Value == "TrackSignatureToTrackIdentifier" && reader.Asset.GetEngineVersion() <= EngineVersion.VER_UE4_18)
                             strucType = FName.DefineDummy(reader.Asset, "Generic");
+                    }
+                }
+
+                if (strucType?.Value == null && ProjectMapStructTypes.Count > 0)
+                {
+                    // the owning type, then the property name alone when no other owner declares it differently
+                    string owner = Ancestry?.Parent?.Value?.Value;
+                    if ((owner != null && ProjectMapStructTypes.TryGetValue((owner, name.Value.Value), out var types)) || ProjectMapStructTypes.TryGetValue((null, name.Value.Value), out types))
+                    {
+                        string t = isKey ? types.Key : types.Value;
+                        if (!string.IsNullOrEmpty(t)) strucType = FName.DefineDummy(reader.Asset, t);
                     }
                 }
 

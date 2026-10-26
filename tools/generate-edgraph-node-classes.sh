@@ -17,7 +17,8 @@ tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
 rg -P --no-config --no-heading --with-filename -U -o --glob '*.h' \
   -e 'class\s+(?:\w+(?:\([^)]*\))?\s+)*?U([A-Z]\w*)\s*(?:final\s*)?:\s*public\s+(?:\w+::)*U(\w+)' -r 'U$1 U$2' \
   "$engine/Source" "$engine/Plugins" "$@" |
-  awk -F: '{split($NF,a," "); if (a[1] != a[2]) print a[1]"\t"a[2]"\t"$1}' | sort -u > "$tmp/inherit.tsv"
+  # UHT names a deprecated class without its DEPRECATED_ prefix (UhtUtilities GetEngineNameParts)
+  awk -F: '{split($NF,a," "); for (i = 1; i <= 2; i++) sub(/^[UA]DEPRECATED_/, substr(a[i], 1, 1), a[i]); if (a[1] != a[2]) print a[1]"\t"a[2]"\t"$1}' | sort -u > "$tmp/inherit.tsv"
 
 awk -F'\t' '{p[$1]=$2; f[$1]=$3}
   END {
