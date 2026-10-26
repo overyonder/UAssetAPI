@@ -293,7 +293,7 @@ public static class NativeClassTails
             string path = asset.FindAssetOnDiskFromPath(package);
             if (path != null && File.Exists(path))
             {
-                var other = new UAsset(path, EngineVersion.UNKNOWN, null, CustomSerializationFlags.SkipParsingBytecode | CustomSerializationFlags.SkipPreloadDependencyLoading);
+                var other = new UAsset(path, EngineVersion.UNKNOWN, asset.Mappings, CustomSerializationFlags.SkipParsingBytecode | CustomSerializationFlags.SkipPreloadDependencyLoading);
                 var classExport = other.Exports.OfType<StructExport>().FirstOrDefault(e => e.ObjectName?.ToString() == name);
                 if (classExport != null) result = NativeBaseOf(other, classExport.SuperStruct, depth + 1);
             }
