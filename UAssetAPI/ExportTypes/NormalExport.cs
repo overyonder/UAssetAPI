@@ -51,6 +51,15 @@ namespace UAssetAPI.ExportTypes
         public bool HasNoTaggedProperties;
 
         /// <summary>
+        /// For the default object of a Blueprint-generated class: the sparse class data struct that
+        /// UBlueprintGeneratedClass::SerializeDefaultObject writes after the tagged properties (null when the class keeps its
+        /// archetype's), and that struct's tagged properties, present when the class's sparse class data is serializable.
+        /// Null when the export has no such field.
+        /// </summary>
+        public FPackageIndex SparseClassDataStruct;
+        public List<PropertyData> SparseClassData;
+
+        /// <summary>
         /// Gets or sets the value associated with the specified key. This operation loops linearly, so it may not be suitable for high-performance environments.
         /// </summary>
         /// <param name="key">The key associated with the value to get or set.</param>
@@ -196,6 +205,62 @@ namespace UAssetAPI.ExportTypes
 
             ObjectGuid = null;
             if (!this.ObjectFlags.HasFlag(EObjectFlags.RF_ClassDefaultObject) && reader.ReadBooleanInt()) ObjectGuid = reader.ReadGuid();
+
+            if (WritesSparseClassData(reader.Asset as UAsset, out bool serializable))
+            {
+                SparseClassDataStruct = new FPackageIndex(reader);
+                // the data follows only for a struct that overrides the archetype's, in a class that serializes it
+                if (!SparseClassDataStruct.IsNull() && serializable)
+                {
+                    SparseClassData = new List<PropertyData>();
+                    FName structName = SparseClassDataStruct.IsExport() ? SparseClassDataStruct.ToExport(reader.Asset).ObjectName : SparseClassDataStruct.ToImport(reader.Asset).ObjectName;
+                    // a struct's tagged properties carry no serialization control extension (UStruct::SerializeVersionedTaggedProperties)
+                    var header = new FUnversionedHeader(reader);
+                    while ((bit = MainSerializer.Read(reader, null, structName, FName.DefineDummy(reader.Asset, "/Script/Engine"), header, true)) != null) SparseClassData.Add(bit);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Whether UBlueprintGeneratedClass::SerializeDefaultObject follows this export's tagged properties with a sparse class
+        /// data struct: the default object of a class whose own class derives from UBlueprintGeneratedClass, saved at or after
+        /// FUE5MainStreamObjectVersion::SparseClassDataStructSerialization. <paramref name="serializable"/> is the class's
+        /// bIsSparseClassDataSerializable, which an editor package needs for the data itself; a cooked package always writes it.
+        /// </summary>
+        bool WritesSparseClassData(UAsset asset, out bool serializable)
+        {
+            serializable = false;
+            if (asset == null || !ObjectFlags.HasFlag(EObjectFlags.RF_ClassDefaultObject) || ClassIndex == null || !ClassIndex.IsExport()) return false;
+            if (asset.GetCustomVersion(UE5MainStreamGuid) < SparseClassDataStructSerialization) return false;
+            var cls = ClassIndex.ToExport(asset);
+            if (cls?.ClassIndex == null || !cls.ClassIndex.IsImport()) return false;
+            if (!DerivesFromBlueprintGeneratedClass(asset, cls.ClassIndex)) return false;
+            serializable = asset.PackageFlags.HasFlag(EPackageFlags.PKG_Cooked)
+                || (cls is NormalExport n && n.Data?.Find(d => d.Name.ToString() == "bIsSparseClassDataSerializable") is BoolPropertyData b && b.Value);
+            return true;
+        }
+
+        static readonly Guid UE5MainStreamGuid = UAPUtils.GUID(0x697DD581, 0xE64F41AB, 0xAA4A51EC, 0xBEB7B628);
+        const int SparseClassDataStructSerialization = 33;
+
+        /// <summary>Walks the class of a class through the package's import type hierarchy, else the mappings' super types.</summary>
+        static bool DerivesFromBlueprintGeneratedClass(UAsset asset, FPackageIndex classOfClass)
+        {
+            string name = classOfClass.ToImport(asset)?.ObjectName?.ToString();
+            if (name == null) return false;
+            if (name == "BlueprintGeneratedClass") return true;
+            if (asset.ImportTypeHierarchies != null && asset.ImportTypeHierarchies.TryGetValue(classOfClass, out var hierarchy))
+            {
+                foreach (var super in hierarchy.SuperTypes) if (super.TypeName.ToString() == "BlueprintGeneratedClass") return true;
+                return false;
+            }
+            for (int depth = 0; depth < 32 && name != null; depth++)
+            {
+                if (name == "BlueprintGeneratedClass") return true;
+                var schema = asset.Mappings?.GetSchemaFromName(name, asset, null, false);
+                name = schema?.SuperType;
+            }
+            return false;
         }
 
         public override void ResolveAncestries(UAsset asset, AncestryInfo ancestrySoFar)
@@ -244,7 +309,17 @@ namespace UAssetAPI.ExportTypes
             if (!writer.Asset.HasUnversionedProperties) writer.Write(new FName(writer.Asset, "None"));
             ScriptSerializationEndOffset = writer.BaseStream.Position - exportStart;
 
-            if (this.ObjectFlags.HasFlag(EObjectFlags.RF_ClassDefaultObject)) return;
+            if (this.ObjectFlags.HasFlag(EObjectFlags.RF_ClassDefaultObject))
+            {
+                if (SparseClassDataStruct == null) return;
+                SparseClassDataStruct.Write(writer);
+                if (SparseClassData == null) return;
+                FName structName = SparseClassDataStruct.IsExport() ? SparseClassDataStruct.ToExport(writer.Asset).ObjectName : SparseClassDataStruct.ToImport(writer.Asset).ObjectName;
+                MainSerializer.GenerateUnversionedHeader(ref SparseClassData, structName, FName.DefineDummy(writer.Asset, "/Script/Engine"), writer.Asset)?.Write(writer);
+                foreach (var p in SparseClassData) MainSerializer.Write(p, writer, true);
+                if (!writer.Asset.HasUnversionedProperties) writer.Write(new FName(writer.Asset, "None"));
+                return;
+            }
             if (ObjectGuid == null)
             {
                 writer.Write((int)0);

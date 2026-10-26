@@ -389,7 +389,8 @@ namespace UAssetAPI
                     if (data is StructPropertyData && !reader.Asset.HasUnversionedProperties)
                     {
                         reader.BaseStream.Position = posBefore;
-                        data = new RawStructPropertyData(name) { FailureReason = $"{ex.GetType().Name}: {ex.Message.Split('\n')[0]}" };
+                        var root = ex; while (root.InnerException != null) root = root.InnerException;
+                        data = new RawStructPropertyData(name) { FailureReason = $"{ex.GetType().Name}: {ex.Message.Split('\n')[0]}" + (root != ex ? $" <- {root.GetType().Name}: {root.Message.Split('\n')[0]}" : "") };
                         data.PropertyTagFlags = propertyTagFlags;
                         data.Ancestry.Initialize(ancestry, parentName, parentModulePath);
                         data.ArrayIndex = ArrayIndex;

@@ -220,7 +220,15 @@ internal static class ClassSerializers
                         if (inline)
                         {
                             d["FontData"] = new Payload("font file", c.Bytes());
-                            if (Ver(FortniteMainGuid) >= 180) d["PreprocessedFontGeometries"] = Rest();
+                            // FFontFaceData::Serialize: TArray<FPreprocessedFontGeometry>, each GlobalWindingReversal, the TMap<int32, FGlyphHeader>
+                            // Glyphs (Flags uint8, five int32), ContourData TArray<uint8> and CoordinateData TArray<int16> (PreprocessedFontGeometry.cpp)
+                            if (Ver(FortniteMainGuid) >= 180) d["PreprocessedFontGeometries"] = c.Array(() => new Dictionary<string, object>
+                            {
+                                ["GlobalWindingReversal"] = c.Bool(),
+                                ["Glyphs"] = c.Array(() => new object[] { r.ReadInt32(), r.ReadByte(), r.ReadInt32(), r.ReadInt32(), r.ReadInt32(), r.ReadInt32(), r.ReadInt32() }, 25),
+                                ["ContourData"] = c.Bytes(),
+                                ["CoordinateData"] = c.Array(() => r.ReadInt16(), 2),
+                            }, 16);
                         }
                     }
                     break;
