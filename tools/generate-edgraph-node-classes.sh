@@ -15,9 +15,9 @@ out=$(dirname "$0")/../UAssetAPI/ExportTypes/EdGraphNodeClasses.g.cs
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
 
 rg --no-config --no-heading --with-filename -U -o --glob '*.h' \
-  -e 'class\s+(?:[A-Z0-9_]+_API\s+)?U(\w+)\s*(?:final\s*)?:\s*public\s+U(\w+)' -r 'U$1 U$2' \
+  -e 'class\s+(?:[A-Z0-9_]+_API\s+)?U(\w+)\s*(?:final\s*)?:\s*public\s+(?:\w+::)*U(\w+)' -r 'U$1 U$2' \
   "$engine/Source" "$engine/Plugins" "$@" |
-  awk -F: '{split($NF,a," "); print a[1]"\t"a[2]"\t"$1}' | sort -u > "$tmp/inherit.tsv"
+  awk -F: '{split($NF,a," "); if (a[1] != a[2]) print a[1]"\t"a[2]"\t"$1}' | sort -u > "$tmp/inherit.tsv"
 
 awk -F'\t' '{p[$1]=$2; f[$1]=$3}
   END {
@@ -25,8 +25,8 @@ awk -F'\t' '{p[$1]=$2; f[$1]=$3}
     while (changed) { changed=0; for (c in p) if (!(c in desc) && (p[c] in desc)) { desc[c]=1; changed=1 } }
     for (c in desc) {
       if (c == "UEdGraphNode") continue
-      x=c; t="None"
-      while (x in p) {
+      x=c; t="None"; depth=0
+      while ((x in p) && depth++ < 64) {
         if (x=="UK2Node_EditablePinBase") { t="UserDefinedPins"; break }
         if (x=="UK2Node_DynamicCast") { t="DynamicCastPureState"; break }
         if (x=="UDataflowEdNode") { t="DataflowNodeGuid"; break }

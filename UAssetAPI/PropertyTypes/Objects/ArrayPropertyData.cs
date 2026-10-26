@@ -73,10 +73,15 @@ public class ArrayPropertyData : PropertyData<PropertyData[]>
             this.ReadEndPropertyTag(reader);
         }
 
+        // an array inside another property, such as an optional's value, has no tag of its own; its type name carries the inner type
+        if (ArrayType == null && PropertyTypeName != null && PropertyTypeName.GetParameter(0) != null) ArrayType = PropertyTypeName.GetParameter(0).GetName();
+
         FName arrayStructType = null;
-        if (reader.Asset.Mappings != null && ArrayType == null && reader.Asset.Mappings.TryGetPropertyData(Name, Ancestry, reader.Asset, out UsmapArrayData strucDat1))
+        // before VER_UE4_INNER_ARRAY_TAG_INFO a struct array names no element struct, so the mappings supply it
+        bool needsStructType = ArrayType?.Value?.Value == "StructProperty" && reader.Asset.ObjectVersion < ObjectVersion.VER_UE4_INNER_ARRAY_TAG_INFO;
+        if (reader.Asset.Mappings != null && (ArrayType == null || needsStructType) && reader.Asset.Mappings.TryGetPropertyData(Name, Ancestry, reader.Asset, out UsmapArrayData strucDat1))
         {
-            ArrayType = FName.DefineDummy(reader.Asset, strucDat1.InnerType.Type.ToString());
+            ArrayType ??= FName.DefineDummy(reader.Asset, strucDat1.InnerType.Type.ToString());
             if (strucDat1.InnerType is UsmapStructData strucDat2) arrayStructType = FName.DefineDummy(reader.Asset, strucDat2.StructType);
         }
 
