@@ -135,6 +135,9 @@ namespace UAssetAPI.ExportTypes
         /// </summary>
         [JsonProperty]
         public NativeClassTailData NativeTails;
+        /// <summary>Why the native class tails were not decoded, when a tail reader was tried and failed or left bytes over.</summary>
+        [JsonIgnore]
+        public string NativeTailFailure;
 
         /// <summary>
         /// The asset that this export is parsed with.

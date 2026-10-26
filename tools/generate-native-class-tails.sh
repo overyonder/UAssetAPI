@@ -2,7 +2,7 @@
 # Generates UAssetAPI/ExportTypes/NativeClassTails.g.cs from an Unreal Engine source tree.
 # Usage: tools/generate-native-class-tails.sh <Engine directory> [extra source roots...]
 #
-# Lists every native class descending from AActor, UActorComponent, UBlueprintCore, UNiagaraDataInterfaceTexture, UWorld, UWorldPartition, UMaterialInterface, UMaterialInterfaceEditorOnlyData, UBodySetup, UObjectRedirector, USkyAtmosphereComponent, UPCGComponent, UStaticMesh, UAnimationAsset, UControlRig or URigVMMemoryStorageGeneratorClass, with its module (the nearest *.Build.cs) and
+# Lists every native class descending from AActor, UActorComponent, UBlueprintCore, UNiagaraDataInterfaceTexture, UWorld, UWorldPartition, UMaterialInterface, UMaterialInterfaceEditorOnlyData, UBodySetup, UObjectRedirector, USkyAtmosphereComponent, UPCGComponent, UStaticMesh, UAnimationAsset, UControlRig, URigVMMemoryStorageGeneratorClass, URigVMBlueprintGeneratedClass or UControlRigBlueprintGeneratedClass, with its module (the nearest *.Build.cs) and
 # which of these serializers, each run after the tagged properties and base class first, write persistent data for it:
 #   UActorComponent      Components/ActorComponent.cpp: UCSModifiedProperties
 #   USceneComponent      Components/SceneComponent.cpp: cooked static bounds, when bComputeBoundsOnceForGame
@@ -33,6 +33,8 @@
 #                        and the serialize-compressed-data flag; compressed data itself keeps its bytes
 #   UControlRig          ControlRig.cpp: the physics solver descriptions
 #   URigVMMemoryStorageGeneratorClass RigVMCore/RigVMMemoryStorage.cpp: property path descriptions and memory type
+#   URigVMBlueprintGeneratedClass RigVMBlueprintGeneratedClass.cpp and UControlRigBlueprintGeneratedClass
+#                        ControlRigBlueprintGeneratedClass.cpp: the class's VM, serialized inline
 # Other serializers of these classes in 5.8.3 save nothing after the tagged properties outside migration or cooking,
 # but some still read data that older engines saved; those reads are added as audits of older packages find them.
 # Recheck the Serialize overrides of these classes when regenerating for a new engine release.
@@ -71,6 +73,8 @@ awk -F'\t' '{p[$1]=$2; f[$1]=$3}
         if (x=="UAnimSequence") flags="AnimSequence|" flags
         if (x=="UControlRig") flags="ControlRig|" flags
         if (x=="URigVMMemoryStorageGeneratorClass") flags="RigVMMemoryStorage|" flags
+        if (x=="URigVMBlueprintGeneratedClass") flags="RigVMClass|" flags
+        if (x=="UControlRigBlueprintGeneratedClass") flags="ControlRigClass|" flags
         x = (x in p) ? p[x] : ""
       }
       if (flags == "") continue

@@ -35,6 +35,8 @@ public enum NativeClassTail
     AnimSequence = 131072,
     ControlRig = 262144,
     RigVMMemoryStorage = 524288,
+    RigVMClass = 1048576,
+    ControlRigClass = 2097152,
 }
 
 /// <summary>RigVMCore/RigVMPropertyPath.h operator&lt;&lt;(FArchive&amp;, FRigVMPropertyPathDescription&amp;).</summary>
@@ -165,6 +167,12 @@ public class NativeClassTailData
     /// <summary>RigVMCore/RigVMMemoryStorage.cpp: the storage's property paths and its ERigVMMemoryType.</summary>
     [JsonProperty] public List<FRigVMPropertyPathDescriptionData> RigVMPropertyPaths;
     [JsonProperty] public byte? RigVMMemoryType;
+    /// <summary>The VM a RigVM or Control Rig blueprint generated class serializes inline, decoded, and its bytes as stored.</summary>
+    [JsonProperty] public RigVMData EmbeddedVM;
+    [JsonProperty] public byte[] EmbeddedVMBytes;
+    /// <summary>The class's graph function store: its public functions, and their bytes for writing.</summary>
+    [JsonProperty] public List<Dictionary<string, object>> GraphFunctions;
+    [JsonProperty] public byte[] GraphFunctionStoreBytes;
 }
 
 public class FSimpleMemberReferenceData
@@ -186,7 +194,7 @@ public static class NativeClassTails
         LevelsetSerializationSupportForBodySetup = 42, DisableLevelset_v14_10 = 1, RemovedAtmosphericFog = 46,
         DynamicTrackingKeysSerializedInComponent = 20, DeprecatedHighResSourceMesh = 49, SerializeMeshDescriptionBase = 25,
         TextureStreamingMeshUVChannelData = 10, MeshMaterialSlotOverlayMaterialAdded = 196, RemovingSourceAnimationData = 3,
-        ControlRigStoresPhysicsSolvers = 31;
+        ControlRigStoresPhysicsSolvers = 31, SwitchedToRigVM = 3, RigVMGeneratedClass = 104, StoreFunctionsInGeneratedClass = 24;
     static readonly Guid ControlRigGuid = UAPUtils.GUID(0xA7820CFB, 0x20A74359, 0x8C542C14, 0x9623CF50);
     static readonly Guid PCGGuid = UAPUtils.GUID(0x2763920D, 0x0F784B39, 0x986E4BB3, 0xA88D666D);
 
@@ -453,6 +461,28 @@ public static class NativeClassTails
                 for (int i = 0; i < n; i++) data.RigVMPropertyPaths.Add(new FRigVMPropertyPathDescriptionData { PropertyIndex = reader.ReadInt32(), HeadCPPType = reader.ReadFString(), SegmentPath = reader.ReadFString() });
                 data.RigVMMemoryType = reader.ReadByte();
             }
+            // UControlRigBlueprintGeneratedClass skips URigVMBlueprintGeneratedClass::Serialize, so a class has one VM at most
+            bool controlRigVM = tails.HasFlag(NativeClassTail.ControlRigClass) && asset.GetCustomVersion(ControlRigGuid) >= SwitchedToRigVM;
+            bool rigVMClassVM = !tails.HasFlag(NativeClassTail.ControlRigClass) && tails.HasFlag(NativeClassTail.RigVMClass) && asset.GetCustomVersion(UE5MainStreamGuid) >= RigVMGeneratedClass;
+            if (controlRigVM || rigVMClassVM)
+            {
+                long fileOffset = export.SerialOffset + export.SerialSize - export.Extras.Length + stream.Position;
+                long start = stream.Position;
+                var rest = reader.ReadBytes((int)(stream.Length - stream.Position));
+                data.EmbeddedVM = RigVMData.Parse(asset, rest, fileOffset, false, out int vmLength);
+                stream.Position = start;
+                data.EmbeddedVMBytes = reader.ReadBytes(vmLength);
+                // FRigVMGraphFunctionStore: the public functions (private ones are written only for reference collection);
+                // the Control Rig class stores it from StoreFunctionsInGeneratedClass
+                if (rigVMClassVM || asset.GetCustomVersion(ControlRigGuid) >= StoreFunctionsInGeneratedClass)
+                {
+                    long storeStart = stream.Position;
+                    data.GraphFunctions = RigVMData.ReadGraphFunctions(reader);
+                    long storeEnd = stream.Position;
+                    stream.Position = storeStart;
+                    data.GraphFunctionStoreBytes = reader.ReadBytes((int)(storeEnd - storeStart));
+                }
+            }
             if (tails.HasFlag(NativeClassTail.PCGComponent) && asset.GetCustomVersion(PCGGuid) >= DynamicTrackingKeysSerializedInComponent)
             {
                 int keys = reader.ReadInt32();
@@ -482,11 +512,14 @@ public static class NativeClassTails
                     if (data.BodySetupImplicitObjects != 0) return;
                 }
             }
-            if (stream.Position != stream.Length) return;
+            if (stream.Position != stream.Length) { export.NativeTailFailure = $"{stream.Length - stream.Position} bytes after the {tails} tails"; return; }
             export.NativeTails = data;
             export.Extras = Array.Empty<byte>();
         }
-        catch (Exception ex) when (ex is FormatException or EndOfStreamException or ArgumentException or InvalidOperationException) { }
+        catch (Exception ex) when (ex is FormatException or EndOfStreamException or ArgumentException or InvalidOperationException)
+        {
+            export.NativeTailFailure = $"{tails} tails: {ex.GetType().Name}: {ex.Message.Split('\n')[0]}";
+        }
     }
 
     internal static void Write(AssetBinaryWriter writer, NativeClassTailData data)
@@ -556,6 +589,8 @@ public static class NativeClassTails
             foreach (var d in data.RigVMPropertyPaths) { writer.Write(d.PropertyIndex); writer.Write(d.HeadCPPType); writer.Write(d.SegmentPath); }
             writer.Write(data.RigVMMemoryType.Value);
         }
+        if (data.EmbeddedVMBytes != null) writer.Write(data.EmbeddedVMBytes);
+        if (data.GraphFunctionStoreBytes != null) writer.Write(data.GraphFunctionStoreBytes);
         if (data.PCGTrackedKeys != null)
         {
             writer.Write(data.PCGTrackedKeys.Count);
