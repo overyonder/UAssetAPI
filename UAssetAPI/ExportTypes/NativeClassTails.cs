@@ -77,8 +77,12 @@ internal static class NativeClassTails
     {
         if (export is not NormalExport normal || export.Extras == null || export.Extras.Length == 0) return;
         if (asset.IsFilterEditorOnly || asset.HasUnversionedProperties) return;
+        // LinkerLoad.cpp loads a class default object through UClass::SerializeDefaultObject, which reads only its tagged
+        // properties; the class's own Serialize, and so its tail, never runs for it
+        if (export.ObjectFlags.HasFlag(EObjectFlags.RF_ClassDefaultObject)) return;
         var native = NativeBaseOf(asset, export.ClassIndex);
-        if (native == null || !NativeClassTailTable.Tails.TryGetValue(native.Value, out var tails)) return;
+        if (native == null) return;
+        if (TailsOf(asset, native.Value) is not NativeClassTail tails) return;
         try
         {
             using var stream = new MemoryStream(export.Extras);
@@ -230,6 +234,24 @@ internal static class NativeClassTails
     /// The nearest native class of an export's class. A Blueprint class is followed through its SuperStruct, in this
     /// package or, through <see cref="UAsset.FindAssetOnDiskFromPath"/>, in the package that defines it.
     /// </summary>
+    /// <summary>
+    /// The engine table names engine classes. A project or plugin C++ class outside it inherits its nearest table
+    /// ancestor's tails, found through the mappings' super chain; with no mappings or no table ancestor it has none.
+    /// </summary>
+    static NativeClassTail? TailsOf(UAsset asset, (string Module, string Class) native)
+    {
+        for (int depth = 0; depth < 64; depth++)
+        {
+            if (NativeClassTailTable.Tails.TryGetValue(native, out var tails)) return tails;
+            var schema = asset.Mappings?.GetSchemaFromName(native.Class, asset, native.Module, false);
+            if (schema == null || string.IsNullOrEmpty(schema.SuperType)) return null;
+            string module = schema.SuperTypeModulePath;
+            if (string.IsNullOrEmpty(module)) return null;
+            native = (module.StartsWith("/Script/") ? module : "/Script/" + module, schema.SuperType);
+        }
+        return null;
+    }
+
     static (string Module, string Class)? NativeBaseOf(UAsset asset, FPackageIndex classIndex, int depth = 0)
     {
         if (classIndex == null || classIndex.IsNull() || depth > 32) return null;

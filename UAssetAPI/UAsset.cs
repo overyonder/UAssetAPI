@@ -2501,6 +2501,10 @@ namespace UAssetAPI
 
                         ConvertExportToChildExportAndRead(reader, i);
                     }
+
+                    // an instance can load before the class export it names; its native base is only resolvable now
+                    foreach (var export in Exports)
+                        if (export.NativeTails == null && export.Extras != null && export.Extras.Length > 0) NativeClassTails.TryRead(this, export);
                 }
             }
             else
