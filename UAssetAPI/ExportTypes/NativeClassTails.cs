@@ -29,6 +29,22 @@ public enum NativeClassTail
     MaterialInterface = 2048,
     ObjectRedirector = 4096,
     SkyAtmosphere = 8192,
+    PCGComponent = 16384,
+}
+
+/// <summary>PCGSettings.h FPCGSettingsAndCulling: a settings object and whether its key is culled.</summary>
+public class FPCGTrackedSettings
+{
+    [JsonProperty] public FSoftObjectPath Settings;
+    [JsonProperty] public bool bCulled;
+}
+
+/// <summary>One entry of FPCGChangeTracker's DynamicallyTrackedKeysToSettings: an FPCGSelectionKey, serialized as its
+/// tagged properties, and the settings that track it.</summary>
+public class FPCGTrackedKey
+{
+    [JsonProperty] public List<PropertyData> Key;
+    [JsonProperty] public List<FPCGTrackedSettings> Settings;
 }
 
 /// <summary>One LOD's per-component data (StaticMeshComponent.cpp operator&lt;&lt;(FArchive&amp;, FStaticMeshComponentLODInfo&amp;)).</summary>
@@ -91,6 +107,8 @@ public class NativeClassTailData
     [JsonProperty] public FPackageIndex RedirectorDestination;
     /// <summary>Components/SkyAtmosphereComponent.cpp: bStaticLightingBuiltGUID.</summary>
     [JsonProperty] public Guid? SkyAtmosphereLightingGuid;
+    /// <summary>PCG ChangeTracking/PCGChangeTracker.cpp: DynamicallyTrackedKeysToSettings.</summary>
+    [JsonProperty] public List<FPCGTrackedKey> PCGTrackedKeys;
 }
 
 public class FSimpleMemberReferenceData
@@ -109,7 +127,9 @@ public static class NativeClassTails
     const int ActorComponentUCSModifiedPropertiesSparseStorage = 4, SerializeSceneComponentStaticBounds = 2,
         SerializeActorLabelInCookedBuilds = 4, IncreaseNormalPrecision = 26, MeshPaintTextureUsesEditorOnly = 166,
         WorldPartitionSerializeStreamingPolicyOnCook = 74, MaterialSavedCachedData = 36, MaterialAttributeLayerParameters = 21,
-        LevelsetSerializationSupportForBodySetup = 42, DisableLevelset_v14_10 = 1, RemovedAtmosphericFog = 46;
+        LevelsetSerializationSupportForBodySetup = 42, DisableLevelset_v14_10 = 1, RemovedAtmosphericFog = 46,
+        DynamicTrackingKeysSerializedInComponent = 20;
+    static readonly Guid PCGGuid = UAPUtils.GUID(0x2763920D, 0x0F784B39, 0x986E4BB3, 0xA88D666D);
 
     static bool BoolProperty(NormalExport export, string name) =>
         export.Data?.Find(p => p.Name?.ToString() == name) is PropertyTypes.Objects.BoolPropertyData b && b.Value;
@@ -223,6 +243,23 @@ public static class NativeClassTails
                 if (data.MaterialSavedCachedExpressionData == true) return;
             }
             if (tails.HasFlag(NativeClassTail.ObjectRedirector)) data.RedirectorDestination = new FPackageIndex(reader);
+            if (tails.HasFlag(NativeClassTail.PCGComponent) && asset.GetCustomVersion(PCGGuid) >= DynamicTrackingKeysSerializedInComponent)
+            {
+                int keys = reader.ReadInt32();
+                if (keys < 0 || keys > stream.Length - stream.Position) return;
+                data.PCGTrackedKeys = new List<FPCGTrackedKey>(keys);
+                var keyStruct = FName.DefineDummy(asset, "PCGSelectionKey");
+                for (int k = 0; k < keys; k++)
+                {
+                    var entry = new FPCGTrackedKey { Key = new List<PropertyData>() };
+                    for (PropertyData p; (p = MainSerializer.Read(reader, new AncestryInfo(), keyStruct, null, null, true)) != null;) entry.Key.Add(p);
+                    int settings = reader.ReadInt32();
+                    if (settings < 0 || settings > stream.Length - stream.Position) return;
+                    entry.Settings = new List<FPCGTrackedSettings>(settings);
+                    for (int s = 0; s < settings; s++) entry.Settings.Add(new FPCGTrackedSettings { Settings = new FSoftObjectPath(reader), bCulled = reader.ReadBooleanInt() });
+                    data.PCGTrackedKeys.Add(entry);
+                }
+            }
             // cooked collision data and level-set implicit objects aren't decoded: such a tail keeps its bytes
             if (tails.HasFlag(NativeClassTail.BodySetup))
             {
@@ -288,6 +325,17 @@ public static class NativeClassTails
         if (data.MaterialInstanceInlineShaderMaps != null) writer.Write(data.MaterialInstanceInlineShaderMaps.Value);
         if (data.MaterialSavedCachedExpressionData != null) writer.WriteBooleanInt(data.MaterialSavedCachedExpressionData.Value);
         if (data.RedirectorDestination != null) data.RedirectorDestination.Write(writer);
+        if (data.PCGTrackedKeys != null)
+        {
+            writer.Write(data.PCGTrackedKeys.Count);
+            foreach (var entry in data.PCGTrackedKeys)
+            {
+                foreach (var p in entry.Key) MainSerializer.Write(p, writer, true);
+                writer.Write(new FName(writer.Asset, "None"));
+                writer.Write(entry.Settings.Count);
+                foreach (var s in entry.Settings) { s.Settings.Write(writer); writer.WriteBooleanInt(s.bCulled); }
+            }
+        }
         if (data.BodySetupGuid != null)
         {
             writer.Write(data.BodySetupGuid.Value);

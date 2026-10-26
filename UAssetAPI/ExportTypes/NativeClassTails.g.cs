@@ -958,7 +958,7 @@ internal static class NativeClassTailTable
         [("/Script/PCGEditor", "PCGCollisionVisComponent")] = NativeClassTail.ActorComponent | NativeClassTail.SceneComponent,
         [("/Script/PCGMeshPartitionInterop", "PCGDataComponent")] = NativeClassTail.ActorComponent,
         [("/Script/PCG", "PCGBuilderVolume")] = NativeClassTail.Actor,
-        [("/Script/PCG", "PCGComponent")] = NativeClassTail.ActorComponent,
+        [("/Script/PCG", "PCGComponent")] = NativeClassTail.ActorComponent | NativeClassTail.PCGComponent,
         [("/Script/PCG", "PCGDebugDrawComponent")] = NativeClassTail.ActorComponent | NativeClassTail.SceneComponent,
         [("/Script/PCG", "PCGGenSourceComponent")] = NativeClassTail.ActorComponent,
         [("/Script/PCG", "PCGIsolatedActor")] = NativeClassTail.Actor,
