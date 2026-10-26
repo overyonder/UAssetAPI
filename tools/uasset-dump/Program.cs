@@ -130,17 +130,23 @@ if (args[0] == "--dataset")
         UAsset asset;
         try { asset = new UAsset(path, EngineVersion.UNKNOWN, mappings, CustomSerializationFlags.ReadOnlyStreaming); }
         catch (Exception ex) { Console.WriteLine($"fail\t{ex.GetType().Name}\t0\t{ex.Message.Split('\n')[0]}\t{path}"); continue; }
-        string rel = Path.GetRelativePath(root, Path.GetFullPath(path)), text = rel + ".txt", native = rel + ".native.json";
-        Directory.CreateDirectory(Path.GetDirectoryName(Path.Combine(outDir, rel)));
-        using (var w = new StreamWriter(Path.Combine(outDir, text))) TextDump.Write(asset, w);
-        bool any;
-        using (var w = new StreamWriter(Path.Combine(outDir, native))) any = WriteNative(asset, w, null);
-        if (!any) { File.Delete(Path.Combine(outDir, native)); native = "-"; }
-        var residues = new StringWriter();
-        Audit(asset, path, residues);
-        Console.Write(residues);
-        int count = residues.ToString().Count(ch => ch == '\n');
-        Console.WriteLine($"index\t{path}\t{text}\t{native}\t{asset.Exports.Count}\t{count}");
+        try
+        {
+            string rel = Path.GetRelativePath(root, Path.GetFullPath(path)), text = rel + ".txt", native = rel + ".native.json";
+            Directory.CreateDirectory(Path.GetDirectoryName(Path.Combine(outDir, rel)));
+            using (var w = new StreamWriter(Path.Combine(outDir, text))) TextDump.Write(asset, w);
+            bool any;
+            using (var w = new StreamWriter(Path.Combine(outDir, native))) any = WriteNative(asset, w, null, new PayloadSidecar(outDir, rel + ".payloads"));
+            if (!any) { File.Delete(Path.Combine(outDir, native)); native = "-"; }
+            var residues = new StringWriter();
+            Audit(asset, path, residues);
+            Console.Write(residues);
+            int count = residues.ToString().Count(ch => ch == '\n');
+            Console.WriteLine($"index\t{path}\t{text}\t{native}\t{asset.Exports.Count}\t{count}");
+        }
+        // a package that runs out of the worker's heap is retried alone with a larger one
+        catch (Exception ex) { Console.WriteLine($"fail\t{ex.GetType().Name}\t0\t{ex.Message.Split('\n')[0]}\t{path}"); }
+        asset = null;
     }
     return;
 }
@@ -260,11 +266,12 @@ void Audit(UAsset asset, string path, TextWriter o)
     }
 }
 
-bool WriteNative(UAsset a, TextWriter w, string only)
+bool WriteNative(UAsset a, TextWriter w, string only, Newtonsoft.Json.JsonConverter payloads = null)
 {
     // one compact JSON line per export after its header line; the tagged properties are --text's, so they're detached
     // rather than serialized and discarded
     var serializer = UAsset.CreateReadableJsonSerializer();
+    if (payloads != null) serializer.Converters.Add(payloads);
     bool any = false;
     for (int i = 0; i < a.Exports.Count; i++)
     {
@@ -323,4 +330,24 @@ static void Blobs(object v, string cls, string name, string at, string path, Tex
             if (f.GetValue(v) is byte[] pb && pb.Length > 0) w.WriteLine($"payload\t{cls}:{fmt.Format}\t{pb.Length}\t{name}{at}.{f.Name}\t{path}");
         }
         else Blobs(f.GetValue(v), cls, name, $"{at}.{f.Name}", path, w, depth + 1);
+}
+
+// Writes a payload over 64 KiB to <dir>/<SHA-1>.bin beside the native file and keeps its format, size, digest and file
+// name in the JSON; a smaller payload stays inline
+sealed class PayloadSidecar(string root, string dir) : Newtonsoft.Json.JsonConverter<UAssetAPI.ExportTypes.Payload>
+{
+    public override void WriteJson(Newtonsoft.Json.JsonWriter w, UAssetAPI.ExportTypes.Payload p, Newtonsoft.Json.JsonSerializer s)
+    {
+        w.WriteStartObject();
+        w.WritePropertyName("Format"); w.WriteValue(p.Format);
+        if (p.Data == null || p.Data.Length <= 65536) { w.WritePropertyName("Data"); w.WriteValue(p.Data); w.WriteEndObject(); return; }
+        string sha = Convert.ToHexString(System.Security.Cryptography.SHA1.HashData(p.Data)), file = Path.Combine(dir, sha + ".bin");
+        string full = Path.Combine(root, file);
+        if (!File.Exists(full)) { Directory.CreateDirectory(Path.GetDirectoryName(full)); File.WriteAllBytes(full, p.Data); }
+        w.WritePropertyName("Size"); w.WriteValue(p.Data.LongLength);
+        w.WritePropertyName("Sha1"); w.WriteValue(sha);
+        w.WritePropertyName("File"); w.WriteValue(file);
+        w.WriteEndObject();
+    }
+    public override UAssetAPI.ExportTypes.Payload ReadJson(Newtonsoft.Json.JsonReader r, Type t, UAssetAPI.ExportTypes.Payload v, bool h, Newtonsoft.Json.JsonSerializer s) => throw new NotSupportedException();
 }
