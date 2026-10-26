@@ -693,8 +693,18 @@ public static class NativeClassTails
     {
         var saved = export.Data?.FirstOrDefault(p => p.Name?.Value?.Value == "bComputeBoundsOnceForGame") as BoolPropertyData;
         if (saved != null) return saved.Value;
-        // Native default: false, except UWaterBodyMeshComponent's constructor, which sets it.
-        return native == ("/Script/Water", "WaterBodyMeshComponent");
+        // Native default: false, except UWaterBodyMeshComponent's constructor, which sets it for it and its subclasses
+        var asset = export.Asset;
+        for (int depth = 0; depth < 64 && native.Class != null; depth++)
+        {
+            // the mappings may name a parent without its module
+            if (native.Class == "WaterBodyMeshComponent" && native.Module is "/Script/Water" or null) return true;
+            var schema = asset.Mappings?.GetSchemaFromName(native.Class, asset, native.Module, false);
+            if (schema == null || string.IsNullOrEmpty(schema.SuperType)) return false;
+            string module = schema.SuperTypeModulePath;
+            native = (string.IsNullOrEmpty(module) ? null : module.StartsWith("/Script/") ? module : "/Script/" + module, schema.SuperType);
+        }
+        return false;
     }
 
     static FStaticMeshComponentLODInfo ReadLODInfo(AssetBinaryReader reader, UAsset asset)
