@@ -38,8 +38,30 @@ public class EdGraphNodeExport : NormalExport
         var cls = export.ClassIndex.ToImport(asset);
         if (cls?.ClassName?.ToString() != "Class" || cls.ClassPackage?.ToString() != "/Script/CoreUObject" || cls.OuterIndex?.IsImport() != true) return null;
         string module = cls.OuterIndex.ToImport(asset)?.ObjectName?.ToString(), name = cls.ObjectName?.ToString();
-        return module != null && name != null && EdGraphNodeClasses.Tails.TryGetValue((module, name), out var tail) ? tail : null;
+        if (module == null || name == null) return null;
+        if (EdGraphNodeClasses.Tails.TryGetValue((module, name), out var tail)) return tail;
+        // a project or plugin node class: its nearest engine node ancestor, through the mappings' super chain or its declared
+        // parent; a project class that adds its own tail fails Read's end check and stays opaque
+        for (int depth = 0; depth < 64; depth++)
+        {
+            var schema = asset.Mappings?.GetSchemaFromName(name, asset, module, false);
+            if (schema != null && !string.IsNullOrEmpty(schema.SuperType) && !string.IsNullOrEmpty(schema.SuperTypeModulePath))
+            {
+                module = schema.SuperTypeModulePath.StartsWith("/Script/") ? schema.SuperTypeModulePath : "/Script/" + schema.SuperTypeModulePath;
+                name = schema.SuperType;
+                if (EdGraphNodeClasses.Tails.TryGetValue((module, name), out tail)) return tail;
+                continue;
+            }
+            if (!NativeClassTails.ProjectNativeParents.TryGetValue(name, out var parent)) return null;
+            if (TailsByClassName.Value.TryGetValue(parent, out tail)) return tail;
+            (module, name) = (null, parent);
+        }
+        return null;
     }
+
+    static readonly Lazy<Dictionary<string, EdGraphNodeTail>> TailsByClassName = new(() =>
+        EdGraphNodeClasses.Tails.GroupBy(kv => kv.Key.Class).Where(g => g.Select(kv => kv.Value).Distinct().Count() == 1)
+            .ToDictionary(g => g.Key, g => g.First().Value));
 
     /// <summary>K2Node_DynamicCast.cpp: PureState is serialized from FFortniteMainBranchObjectVersion::DynamicCastNodesUsePureStateEnum (85).</summary>
     static bool HasPureStateByte(UAsset asset) => asset.GetCustomVersion(UAPUtils.GUID(0x601D1886, 0xAC644F84, 0xAA16D3DE, 0x0DEAC7D6)) >= 85;

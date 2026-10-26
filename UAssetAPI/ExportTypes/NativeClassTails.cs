@@ -37,6 +37,7 @@ public enum NativeClassTail
     RigVMMemoryStorage = 524288,
     RigVMClass = 1048576,
     ControlRigClass = 2097152,
+    UAFAnimGraph = 4194304,
 }
 
 /// <summary>RigVMCore/RigVMPropertyPath.h operator&lt;&lt;(FArchive&amp;, FRigVMPropertyPathDescription&amp;).</summary>
@@ -173,6 +174,13 @@ public class NativeClassTailData
     /// <summary>The class's graph function store: its public functions, and their bytes for writing.</summary>
     [JsonProperty] public List<Dictionary<string, object>> GraphFunctions;
     [JsonProperty] public byte[] GraphFunctionStoreBytes;
+    /// <summary>
+    /// UAFAnimGraph/Graph/AnimNextAnimationGraph.cpp UUAFAnimGraph::Serialize: the graph's compiled shared data, written by the
+    /// trait writer. The engine reads it only from cooked packages; the editor recompiles the graph from its editor data.
+    /// </summary>
+    [JsonProperty] public byte[] UAFSharedDataArchiveBuffer;
+    /// <summary>Bytes after an older anim graph's properties, which the engine skips by seeking to the export's end.</summary>
+    [JsonProperty] public byte[] UAFSkippedBytes;
 }
 
 public class FSimpleMemberReferenceData
@@ -194,7 +202,7 @@ public static class NativeClassTails
         LevelsetSerializationSupportForBodySetup = 42, DisableLevelset_v14_10 = 1, RemovedAtmosphericFog = 46,
         DynamicTrackingKeysSerializedInComponent = 20, DeprecatedHighResSourceMesh = 49, SerializeMeshDescriptionBase = 25,
         TextureStreamingMeshUVChannelData = 10, MeshMaterialSlotOverlayMaterialAdded = 196, RemovingSourceAnimationData = 3,
-        ControlRigStoresPhysicsSolvers = 31, SwitchedToRigVM = 3, RigVMGeneratedClass = 104, StoreFunctionsInGeneratedClass = 24;
+        ControlRigStoresPhysicsSolvers = 31, SwitchedToRigVM = 3, RigVMGeneratedClass = 104, StoreFunctionsInGeneratedClass = 24, AnimNextCombineParameterBlocksAndGraphs = 136;
     static readonly Guid ControlRigGuid = UAPUtils.GUID(0xA7820CFB, 0x20A74359, 0x8C542C14, 0x9623CF50);
     static readonly Guid PCGGuid = UAPUtils.GUID(0x2763920D, 0x0F784B39, 0x986E4BB3, 0xA88D666D);
 
@@ -483,6 +491,16 @@ public static class NativeClassTails
                     data.GraphFunctionStoreBytes = reader.ReadBytes((int)(storeEnd - storeStart));
                 }
             }
+            if (tails.HasFlag(NativeClassTail.UAFAnimGraph))
+            {
+                if ((int)asset.GetCustomVersion<FFortniteMainBranchObjectVersion>() >= AnimNextCombineParameterBlocksAndGraphs)
+                {
+                    int size = reader.ReadInt32();
+                    if (size < 0 || size > stream.Length - stream.Position) throw new FormatException($"Invalid anim graph shared data size {size}");
+                    data.UAFSharedDataArchiveBuffer = reader.ReadBytes(size);
+                }
+                else data.UAFSkippedBytes = reader.ReadBytes((int)(stream.Length - stream.Position));
+            }
             if (tails.HasFlag(NativeClassTail.PCGComponent) && asset.GetCustomVersion(PCGGuid) >= DynamicTrackingKeysSerializedInComponent)
             {
                 int keys = reader.ReadInt32();
@@ -591,6 +609,8 @@ public static class NativeClassTails
         }
         if (data.EmbeddedVMBytes != null) writer.Write(data.EmbeddedVMBytes);
         if (data.GraphFunctionStoreBytes != null) writer.Write(data.GraphFunctionStoreBytes);
+        if (data.UAFSharedDataArchiveBuffer != null) { writer.Write(data.UAFSharedDataArchiveBuffer.Length); writer.Write(data.UAFSharedDataArchiveBuffer); }
+        if (data.UAFSkippedBytes != null) writer.Write(data.UAFSkippedBytes);
         if (data.PCGTrackedKeys != null)
         {
             writer.Write(data.PCGTrackedKeys.Count);
