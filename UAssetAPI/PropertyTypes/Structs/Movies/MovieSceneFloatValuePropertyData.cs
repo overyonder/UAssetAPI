@@ -3,7 +3,7 @@ using UAssetAPI.UnrealTypes;
 
 namespace UAssetAPI.PropertyTypes.Structs;
 
-public class MovieSceneFloatValuePropertyData : PropertyData<FMovieSceneFloatValue>
+public class MovieSceneFloatValuePropertyData : PropertyData<FMovieSceneValue<float>>
 {
     public MovieSceneFloatValuePropertyData(FName name) : base(name) { }
 
@@ -20,7 +20,7 @@ public class MovieSceneFloatValuePropertyData : PropertyData<FMovieSceneFloatVal
             this.ReadEndPropertyTag(reader);
         }
 
-        Value = new FMovieSceneFloatValue(reader);
+        Value = MovieSceneSerializedValue.Read(reader, reader.ReadSingle);
     }
 
     public override int Write(AssetBinaryWriter writer, bool includeHeader, PropertySerializationContext serializationContext = PropertySerializationContext.Normal)
@@ -32,7 +32,7 @@ public class MovieSceneFloatValuePropertyData : PropertyData<FMovieSceneFloatVal
 
         var offset = writer.BaseStream.Position;
 
-        Value.Write(writer, writer.Write);
+        MovieSceneSerializedValue.Write<float>(writer, Value, writer.Write);
 
         return (int)(writer.BaseStream.Position - offset);
     }
