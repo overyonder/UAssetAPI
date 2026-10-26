@@ -173,6 +173,9 @@ public class StructPropertyData : PropertyData<List<PropertyData>>
         // AnimTypes.h: FRawAnimSequenceTrack gained its native serializer at RawAnimSequenceTrackSerializer; earlier saves are tagged
         if (structTypeVal == "RawAnimSequenceTrack" && reader.Asset.GetCustomVersion<FUE5ReleaseStreamObjectVersion>() < FUE5ReleaseStreamObjectVersion.RawAnimSequenceTrackSerializer) hasCustomStructSerialization = false;
         if (structTypeVal == "MovieSceneTangentData" && reader.Asset.GetCustomVersion<FSequencerObjectVersion>() < FSequencerObjectVersion.SerializeFloatChannel) hasCustomStructSerialization = false;
+        // MaterialShared.cpp SerializeExpressionInput declines native serialization before MaterialInputNativeSerialize, so the input is tagged
+        if (structTypeVal is "ExpressionInput" or "ColorMaterialInput" or "ScalarMaterialInput" or "VectorMaterialInput" or "Vector2MaterialInput" or "MaterialAttributesInput"
+            && reader.Asset.GetCustomVersion<FCoreObjectVersion>() < FCoreObjectVersion.MaterialInputNativeSerialize) hasCustomStructSerialization = false;
         if (structTypeVal == "FontData" && reader.Asset.GetCustomVersion<FEditorObjectVersion>() < FEditorObjectVersion.AddedFontFaceAssets) hasCustomStructSerialization = false;
 
         if (leng1 == 0)
@@ -250,6 +253,9 @@ public class StructPropertyData : PropertyData<List<PropertyData>>
         if (structTypeVal == "MovieSceneFloatValue" && Asset.GetCustomVersion<FSequencerObjectVersion>() < FSequencerObjectVersion.SerializeFloatChannel) hasCustomStructSerialization = false;
         if (structTypeVal == "RawAnimSequenceTrack" && Asset.GetCustomVersion<FUE5ReleaseStreamObjectVersion>() < FUE5ReleaseStreamObjectVersion.RawAnimSequenceTrackSerializer) hasCustomStructSerialization = false;
         if (structTypeVal == "MovieSceneTangentData" && Asset.GetCustomVersion<FSequencerObjectVersion>() < FSequencerObjectVersion.SerializeFloatChannel) hasCustomStructSerialization = false;
+        // MaterialShared.cpp SerializeExpressionInput declines native serialization before MaterialInputNativeSerialize, so the input is tagged
+        if (structTypeVal is "ExpressionInput" or "ColorMaterialInput" or "ScalarMaterialInput" or "VectorMaterialInput" or "Vector2MaterialInput" or "MaterialAttributesInput"
+            && Asset.GetCustomVersion<FCoreObjectVersion>() < FCoreObjectVersion.MaterialInputNativeSerialize) hasCustomStructSerialization = false;
         if (structTypeVal == "FontData" && Asset.GetCustomVersion<FEditorObjectVersion>() < FEditorObjectVersion.AddedFontFaceAssets) hasCustomStructSerialization = false;
         return hasCustomStructSerialization;
     }
