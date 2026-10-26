@@ -21,6 +21,8 @@ public enum NativeClassTail
     Actor = 8,
     BlueprintCore = 16,
     NiagaraTexture = 32,
+    World = 64,
+    WorldPartition = 128,
 }
 
 /// <summary>One LOD's per-component data (StaticMeshComponent.cpp operator&lt;&lt;(FArchive&amp;, FStaticMeshComponentLODInfo&amp;)).</summary>
@@ -59,6 +61,13 @@ public class NativeClassTailData
     [JsonProperty] public bool? LegacyGeneratedClassIsAuthoritative;
     /// <summary>NiagaraDataInterfaceTexture.cpp: StreamData, the texture's stream data array.</summary>
     [JsonProperty] public byte[] NiagaraTextureStreamData;
+    /// <summary>World.cpp UWorld::Serialize: the persistent level, extra referenced objects and persistent streaming levels.</summary>
+    [JsonProperty] public FPackageIndex WorldPersistentLevel;
+    [JsonProperty] public List<FPackageIndex> WorldExtraReferencedObjects;
+    [JsonProperty] public List<FPackageIndex> WorldStreamingLevels;
+    /// <summary>WorldPartition.cpp UWorldPartition::Serialize: whether it was cooked, and then its streaming policy.</summary>
+    [JsonProperty] public bool? WorldPartitionIsCooked;
+    [JsonProperty] public FPackageIndex WorldPartitionStreamingPolicy;
 }
 
 public class FSimpleMemberReferenceData
@@ -75,7 +84,18 @@ public static class NativeClassTails
     static readonly Guid RenderingGuid = UAPUtils.GUID(0x12F88B9F, 0x88754AFC, 0xA67CD90C, 0x383ABD29);
     static readonly Guid FortniteMainGuid = UAPUtils.GUID(0x601D1886, 0xAC644F84, 0xAA16D3DE, 0x0DEAC7D6);
     const int ActorComponentUCSModifiedPropertiesSparseStorage = 4, SerializeSceneComponentStaticBounds = 2,
-        SerializeActorLabelInCookedBuilds = 4, IncreaseNormalPrecision = 26, MeshPaintTextureUsesEditorOnly = 166;
+        SerializeActorLabelInCookedBuilds = 4, IncreaseNormalPrecision = 26, MeshPaintTextureUsesEditorOnly = 166,
+        WorldPartitionSerializeStreamingPolicyOnCook = 74;
+    static readonly Guid UE5MainStreamGuid = UAPUtils.GUID(0x697DD581, 0xE64F41AB, 0xAA4A51EC, 0xBEB7B628);
+
+    static List<FPackageIndex> ReadIndices(AssetBinaryReader reader, Stream stream)
+    {
+        int n = reader.ReadInt32();
+        if (n < 0 || n > (stream.Length - stream.Position) / 4) throw new FormatException("Invalid object array count");
+        var list = new List<FPackageIndex>(n);
+        for (int i = 0; i < n; i++) list.Add(new FPackageIndex(reader));
+        return list;
+    }
 
     // Blueprint class package path + class name -> its nearest native class, across all packages read in this process.
     static readonly ConcurrentDictionary<string, (string Module, string Class)?> BlueprintNativeBase = new();
@@ -134,6 +154,18 @@ public static class NativeClassTails
                 if (n < 0 || n > stream.Length - stream.Position) return;
                 data.NiagaraTextureStreamData = reader.ReadBytes(n);
             }
+            // the legacy viewport and save-game summary fields come before VER_UE4_REMOVE_SAVEGAMESUMMARY; such a world keeps its bytes
+            if (tails.HasFlag(NativeClassTail.World) && asset.ObjectVersion >= ObjectVersion.VER_UE4_REMOVE_SAVEGAMESUMMARY)
+            {
+                data.WorldPersistentLevel = new FPackageIndex(reader);
+                data.WorldExtraReferencedObjects = ReadIndices(reader, stream);
+                data.WorldStreamingLevels = ReadIndices(reader, stream);
+            }
+            if (tails.HasFlag(NativeClassTail.WorldPartition) && asset.GetCustomVersion(UE5MainStreamGuid) >= WorldPartitionSerializeStreamingPolicyOnCook)
+            {
+                data.WorldPartitionIsCooked = reader.ReadBooleanInt();
+                if (data.WorldPartitionIsCooked == true) data.WorldPartitionStreamingPolicy = new FPackageIndex(reader);
+            }
             if (stream.Position != stream.Length) return;
             export.NativeTails = data;
             export.Extras = Array.Empty<byte>();
@@ -171,6 +203,16 @@ public static class NativeClassTails
         }
         if (data.LegacyGeneratedClassIsAuthoritative != null) writer.WriteBooleanInt(data.LegacyGeneratedClassIsAuthoritative.Value);
         if (data.NiagaraTextureStreamData != null) { writer.Write(data.NiagaraTextureStreamData.Length); writer.Write(data.NiagaraTextureStreamData); }
+        if (data.WorldPersistentLevel != null)
+        {
+            data.WorldPersistentLevel.Write(writer);
+            foreach (var list in new[] { data.WorldExtraReferencedObjects, data.WorldStreamingLevels }) { writer.Write(list.Count); foreach (var i in list) i.Write(writer); }
+        }
+        if (data.WorldPartitionIsCooked != null)
+        {
+            writer.WriteBooleanInt(data.WorldPartitionIsCooked.Value);
+            if (data.WorldPartitionIsCooked.Value) data.WorldPartitionStreamingPolicy.Write(writer);
+        }
     }
 
     static int BoundsSize(UAsset asset) => asset.ObjectVersionUE5 >= ObjectVersionUE5.LARGE_WORLD_COORDINATES ? 7 * 8 : 7 * 4;
