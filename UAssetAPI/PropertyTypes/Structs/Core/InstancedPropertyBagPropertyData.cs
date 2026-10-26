@@ -65,7 +65,7 @@ public class InstancedPropertyBagPropertyData : PropertyData<List<PropertyData>>
         if (!HasData) return;
 
         int count = reader.ReadInt32();
-        if (count < 0 || count > MainSerializer.MaxSerializedArrayLength) throw new FormatException($"Invalid property bag descriptor count {count}");
+        if (count < 0 || count > (reader.BaseStream.Length - reader.BaseStream.Position)) throw new FormatException($"Invalid property bag descriptor count {count}");
         PropertyDescs = new List<FPropertyBagPropertyDesc>(count);
         for (int i = 0; i < count; i++)
         {

@@ -116,6 +116,13 @@ namespace UAssetAPI
         /// Skip loading exports at read time altogether. Entries in the export map will be read as raw exports of zero length, so they cannot be manually parsed later. If this flag is set, SkipParsingExports will also effectively be automatically set regardless of whether or not it was already set manually.
         /// </summary>
         SkipLoadingExports = 16,
+
+        /// <summary>
+        /// Read the package from its file instead of copying it into memory, and keep the bulk data and package trailer as
+        /// offsets only: for inspecting packages too large to hold, such as a MetaHuman Character's. The asset can't be
+        /// written back.
+        /// </summary>
+        ReadOnlyStreaming = 32,
     }
 
 
@@ -651,6 +658,8 @@ namespace UAssetAPI
         /// <returns>A new BinaryReader that stores the binary data of the input file.</returns>
         public AssetBinaryReader PathToReader(string p, bool loadUEXP = true)
         {
+            if (CustomSerializationFlags.HasFlag(CustomSerializationFlags.ReadOnlyStreaming) && !File.Exists(Path.ChangeExtension(p, "uexp")))
+                return new AssetBinaryReader(new FileStream(p, FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 16), loadUEXP, this);
             return new AssetBinaryReader(PathToStream(p, loadUEXP), loadUEXP, this);
         }
 
@@ -730,13 +739,27 @@ namespace UAssetAPI
         /// </summary>
         /// <param name="path">The asset path.</param>
         /// <returns>The path to the file on disk, or null if none could be found.</returns>
+        /// <summary>
+        /// Content directories by mount point (Engine, or a plugin's name) for packages outside the asset's own project, such
+        /// as engine and engine plugin content. Filled by the caller.
+        /// </summary>
+        public static readonly Dictionary<string, string> MountPoints = new(StringComparer.OrdinalIgnoreCase);
+
         public virtual string FindAssetOnDiskFromPath(string path)
         {
             if (!path.StartsWith("/") || path.StartsWith("/Script")) return null;
             int firstIdxWithoutSlash = path.IndexOf('/') + 1;
             int secondIdxWithoutSlash = path.IndexOf('/', firstIdxWithoutSlash) + 1;
+            if (secondIdxWithoutSlash <= 0) return null;
             string pathPrefixPart = path.Substring(firstIdxWithoutSlash, secondIdxWithoutSlash - firstIdxWithoutSlash - 1);
             string pathNoPrefix = path.Substring(secondIdxWithoutSlash) + ".uasset";
+            if (pathPrefixPart != "Game" && MountPoints.TryGetValue(pathPrefixPart, out var mounted))
+            {
+                string candidate = Path.Combine(mounted, pathNoPrefix.FixDirectorySeparatorsForDisk());
+                if (File.Exists(candidate)) return candidate;
+                candidate = Path.ChangeExtension(candidate, ".umap");
+                if (File.Exists(candidate)) return candidate;
+            }
 
             string mappedPathOnDisk = string.Empty;
             bool foundMappedPath = false;
@@ -1112,9 +1135,6 @@ namespace UAssetAPI
                     case "MetaData":
                         Exports[i] = Exports[i].ConvertToChildExport<MetaDataExport>();
                         break;
-                    case "AssetImportData":
-                        Exports[i] = Exports[i].ConvertToChildExport<AssetImportDataExport>();
-                        break;
                     default:
                         if (exportClassType.EndsWith("DataTable"))
                         {
@@ -1135,6 +1155,10 @@ namespace UAssetAPI
                         else if (exportClassType == "SplineComponent")
                         {
                             Exports[i] = Exports[i].ConvertToChildExport<SceneComponentExport>();
+                        }
+                        else if (NativeClassTails.WritesLeadingJson(this, Exports[i]))
+                        {
+                            Exports[i] = Exports[i].ConvertToChildExport<AssetImportDataExport>();
                         }
                         else if (MainSerializer.PropertyTypeRegistry.ContainsKey(exportClassType) || MainSerializer.AdditionalPropertyRegistry.Contains(exportClassType))
                         {
@@ -2355,7 +2379,8 @@ namespace UAssetAPI
             }
 
             AdditionalFiles = [];
-            if (BulkDataStartOffset > 0 && reader.LoadUexp)
+            if (CustomSerializationFlags.HasFlag(CustomSerializationFlags.ReadOnlyStreaming)) { }
+            else if (BulkDataStartOffset > 0 && reader.LoadUexp)
             {
                 long before = reader.BaseStream.Position;
                 reader.BaseStream.Seek(BulkDataStartOffset, SeekOrigin.Begin);
@@ -2506,7 +2531,8 @@ namespace UAssetAPI
 
                     // an instance can load before the class export it names; its native base is only resolvable now
                     foreach (var export in Exports)
-                        if (export.NativeTails == null && export.Extras != null && export.Extras.Length > 0) NativeClassTails.TryRead(this, export);
+                        if ((export.NativeTails == null && export.Extras != null && export.Extras.Length > 0)
+                            || (export is NormalExport n && n.LeadingNative != null && n.LeadingFields == null && n.NativeTailFailure == null)) NativeClassTails.TryRead(this, export);
                 }
             }
             else
@@ -2833,6 +2859,8 @@ namespace UAssetAPI
         /// <returns>A new MemoryStream containing the full binary data of the serialized asset.</returns>
         public virtual MemoryStream WriteData()
         {
+            if (CustomSerializationFlags.HasFlag(CustomSerializationFlags.ReadOnlyStreaming))
+                throw new InvalidOperationException("An asset read with ReadOnlyStreaming keeps no bulk data and can't be written");
             // JSON may introduce FNames absent from the source map. Bind only
             // names the native writer actually uses; property array labels and
             // other JSON-only dummy names must not change an unchanged package.
@@ -3690,7 +3718,9 @@ namespace UAssetAPI
             this.GameSpecificOverride = gsOverride;
             SetEngineVersion(engineVersion);
 
-            Read(PathToReader(path));
+            var reader = PathToReader(path);
+            try { Read(reader); }
+            finally { if (reader.BaseStream is FileStream) reader.Dispose(); }
         }
 
         /// <summary>
@@ -3712,7 +3742,9 @@ namespace UAssetAPI
             this.GameSpecificOverride = gsOverride;
             SetEngineVersion(engineVersion);
 
-            Read(PathToReader(path, loadUexp));
+            var reader = PathToReader(path, loadUexp);
+            try { Read(reader); }
+            finally { if (reader.BaseStream is FileStream) reader.Dispose(); }
         }
 
         /// <summary>

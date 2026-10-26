@@ -43,9 +43,8 @@
 #                        FFortniteMainBranchObjectVersion::AnimNextCombineParameterBlocksAndGraphs
 #   USoundNode           Sound/SoundNode.cpp, and USoundCue SoundCue.cpp: strip flags and, with editor data, the graph
 #                        node or the cue's graph
-#   USkeleton, UPhysicsAsset, UNiagaraSystem, UNiagaraScript, UComputeGraph, UOptimusDeformer, UDNAAsset, UDNA,
-#   UCurveExpressionsDataAsset, UAnimCurveCompressionCodec, UParticleModuleRequired, USkeletalMesh, UUAFSystem:
-#                        read by ClassSerializers.cs, which names each serializer
+#   Every class with a `case` in ClassSerializers.cs, which names each serializer: listed per class as a chain of
+#                        those ancestors, base first. USoundWaveProcedural::Serialize calls USoundBase's, skipping USoundWave.
 #   USoundNodeWavePlayer Sound/SoundNodeWavePlayer.cpp: the hard sound wave reference, from
 #                        FFrameworkObjectVersion::HardSoundReferences
 # Other serializers of these classes in 5.8.3 save nothing after the tagged properties outside migration or cooking,
@@ -55,16 +54,23 @@ set -euo pipefail
 engine=$1; shift
 out=$(dirname "$0")/../UAssetAPI/ExportTypes/NativeClassTails.g.cs
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
+# the classes whose serializers ClassSerializers.cs reads
+named=$(sed -n 's/^ *case "\([UA][A-Za-z0-9_]*\)":.*/\1/p' "$(dirname "$0")/../UAssetAPI/ExportTypes/ClassSerializers.cs" | sort -u | tr '\n' ' ')
+[ -n "$named" ] || { echo "no class serializers found" >&2; exit 1; }
 
-rg --no-config --no-heading --with-filename -U -o --glob '*.h' \
-  -e 'class\s+(?:[A-Z0-9_]+_API\s+)?([UA]\w+)\s*(?:final\s*)?:\s*public\s+(?:\w+::)*([UA]\w+)' -r '$1 $2' \
+# a declaration can carry macros before the name, such as an export macro or UE_DEPRECATED(version, "message")
+rg --no-config --no-heading --with-filename -U -P -o --glob '*.h' \
+  -e 'class\s+(?:\w+(?:\([^)]*\))?\s+)*?([UA][A-Z]\w*)\s*(?:final\s*)?:\s*public\s+(?:\w+::)*([UA]\w+)' -r '$1 $2' \
   "$engine/Source" "$engine/Plugins" "$@" |
   awk -F: '{split($NF,a," "); if (a[1] != a[2]) print a[1]"\t"a[2]"\t"$1}' | sort -u > "$tmp/inherit.tsv"
 
-awk -F'\t' '{p[$1]=$2; f[$1]=$3}
+awk -F'\t' -v named_list="$named" '{p[$1]=$2; f[$1]=$3}
   END {
+    n = split(named_list, nl, " "); for (i = 1; i <= n; i++) named[nl[i]] = 1
+    # Serialize overrides that call an older ancestor Serialize, skipping the classes in between
+    skips["USoundWaveProcedural"] = "USoundBase"
     for (c in p) {
-      x=c; flags=""; depth=0
+      x=c; flags=""; chain=""; skip=""; depth=0
       # a class named like its namespaced parent can make a cycle
       while (x != "" && depth++ < 64) {
         if (x=="UStaticMeshComponent") flags="StaticMeshComponent|" flags
@@ -93,27 +99,18 @@ awk -F'\t' '{p[$1]=$2; f[$1]=$3}
         if (x=="UUAFAnimGraph") flags="UAFAnimGraph|" flags
         if (x=="USoundNode" || x=="USoundCue") flags="SoundNode|" flags
         if (x=="USoundNodeWavePlayer") flags="SoundNodeWavePlayer|" flags
-        if (x=="USkeleton") flags="Skeleton|" flags
-        if (x=="UPhysicsAsset") flags="PhysicsAsset|" flags
-        if (x=="UNiagaraSystem") flags="NiagaraSystem|" flags
-        if (x=="UNiagaraScript") flags="NiagaraScript|" flags
-        if (x=="UComputeGraph") flags="ComputeGraph|" flags
-        if (x=="UOptimusDeformer") flags="OptimusDeformer|" flags
-        if (x=="UDNAAsset" || x=="UDNA") flags="DNAAsset|" flags
-        if (x=="UCurveExpressionsDataAsset") flags="CurveExpressionsDataAsset|" flags
-        if (x=="UAnimCurveCompressionCodec") flags="AnimCurveCompressionCodec|" flags
-        if (x=="UParticleModuleRequired") flags="ParticleModuleRequired|" flags
-        if (x=="USkeletalMesh") flags="SkeletalMesh|" flags
-        if (x=="UUAFSystem") flags="UAFSystem|" flags
+        if (skip != "") { if (x == skip) skip = ""; else { x = (x in p) ? p[x] : ""; continue } }
+        if (x in named) chain = x (chain == "" ? "" : ",") chain
+        if (x in skips) skip = skips[x]
         x = (x in p) ? p[x] : ""
       }
-      if (flags == "") continue
+      if (flags == "" && chain == "") continue
       sub(/\|$/, "", flags)
-      print substr(c,2)"\t"flags"\t"f[c]
+      print substr(c,2)"\t"(flags == "" ? "None" : flags)"\t"(chain == "" ? "-" : chain)"\t"f[c]
     }
-    print "Actor\tActor\t" f["AActor"]; print "BlueprintCore\tBlueprintCore\t" f["UBlueprintCore"]; print "NiagaraDataInterfaceTexture\tNiagaraTexture\t" f["UNiagaraDataInterfaceTexture"];print "ActorComponent\tActorComponent\t" f["UActorComponent"]
+    print "Actor\tActor\t-\t" f["AActor"]; print "BlueprintCore\tBlueprintCore\t-\t" f["UBlueprintCore"]; print "NiagaraDataInterfaceTexture\tNiagaraTexture\t-\t" f["UNiagaraDataInterfaceTexture"];print "ActorComponent\tActorComponent\t-\t" f["UActorComponent"]
   }' "$tmp/inherit.tsv" | sort -u |
-while IFS=$'\t' read -r cls flags header; do
+while IFS=$'\t' read -r cls flags chain header; do
   dir=$(dirname "$header"); module=""
   while [ "$dir" != "/" ]; do
     build=$(ls "$dir"/*.[Bb]uild.cs 2>/dev/null | head -1 || true)
@@ -121,8 +118,15 @@ while IFS=$'\t' read -r cls flags header; do
     dir=$(dirname "$dir")
   done
   [ -n "$module" ] || { echo "no module for $cls ($header)" >&2; exit 1; }
-  printf '%s\t%s\t%s\n' "$module" "$cls" "$flags"
+  printf '%s\t%s\t%s\t%s\n' "$module" "$cls" "$flags" "$chain"
 done | sort > "$tmp/table.tsv"
+
+# [CoreRedirects] ClassRedirects from the engine and plugin configuration: a package saved before a class moved or was
+# renamed imports it by its old name (the documentation examples in BaseEngine.ini name /Script/Module and GameName)
+rg --no-config -o -N --no-filename -g '*.ini' 'ClassRedirects\s*=\s*\(([^)]*)\)' -r '$1' "$engine/Config" "$engine/Plugins" "$@" |
+  grep -v 'MatchSubstring' |
+  sed -nE 's/.*OldName\s*=\s*"([^"]+)".*NewName\s*=\s*"\/Script\/([^".]+)\.([^"]+)".*/\1\t\2\t\3/p' |
+  grep -vE '^/Script/Module\.|^OldClass\b|/Script/GameName' | sort -u -t$'\t' -k1,1 > "$tmp/redirects.tsv"
 
 # Native classes deriving from UClass, whose exports are classes and serialize as UClass does
 awk -F'\t' '{p[$1]=$2} END { for (c in p) { x=p[c]; depth=0; while (x != "" && depth++ < 64) { if (x=="UClass") { print substr(c,2); break } x = (x in p) ? p[x] : "" } } }' "$tmp/inherit.tsv" | sort -u > "$tmp/classkinds.txt"
@@ -139,6 +143,18 @@ awk -F'\t' '{p[$1]=$2} END { for (c in p) { x=p[c]; depth=0; while (x != "" && d
   echo '    internal static readonly Dictionary<(string Module, string Class), NativeClassTail> Tails = new()'
   echo '    {'
   awk -F'\t' '{gsub(/\|/, " | NativeClassTail.", $3); printf "        [(\"/Script/%s\", \"%s\")] = NativeClassTail.%s,\n", $1, $2, $3}' "$tmp/table.tsv"
+  echo '    };'
+  echo
+  echo '    /// <summary>The ancestors, base first, whose serializers <see cref="ClassSerializers"/> reads, by native class.</summary>'
+  echo '    internal static readonly Dictionary<(string Module, string Class), string[]> Chains = new()'
+  echo '    {'
+  awk -F'\t' '$4 != "-" {n = split($4, a, ","); printf "        [(\"/Script/%s\", \"%s\")] = [", $1, $2; for (i = 1; i <= n; i++) printf "%s\"%s\"", (i > 1 ? ", " : ""), a[i]; print "],"}' "$tmp/table.tsv"
+  echo '    };'
+  echo
+  echo '    /// <summary>[CoreRedirects] ClassRedirects: a class by its old /Script path or bare name, and its current module and name.</summary>'
+  echo '    internal static readonly Dictionary<string, (string Module, string Class)> ClassRedirects = new()'
+  echo '    {'
+  awk -F'\t' '{printf "        [\"%s\"] = (\"/Script/%s\", \"%s\"),\n", $1, $2, $3}' "$tmp/redirects.tsv"
   echo '    };'
   echo
   echo '    /// <summary>Native classes deriving from UClass, by name: an export of one of them is itself a class.</summary>'

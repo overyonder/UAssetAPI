@@ -24,6 +24,9 @@ namespace UAssetAPI.ExportTypes
         /// <summary>How the enum was originally defined.</summary>
         public ECppForm CppForm = ECppForm.Regular;
 
+        /// <summary>Enum.cpp: the underlying integer type, saved from FFortniteMainBranchObjectVersion::EnumUnderlyingType.</summary>
+        public byte? UnderlyingType;
+
         public void Read(AssetBinaryReader reader, UAsset asset)
         {
             if (asset.ObjectVersion < ObjectVersion.VER_UE4_TIGHTLY_PACKED_ENUMS)
@@ -65,7 +68,11 @@ namespace UAssetAPI.ExportTypes
             {
                 CppForm = (ECppForm)reader.ReadByte();
             }
+            if (asset.GetCustomVersion(FortniteMainGuid) >= EnumUnderlyingType) UnderlyingType = reader.ReadByte();
         }
+
+        static readonly Guid FortniteMainGuid = UAPUtils.GUID(0x601D1886, 0xAC644F84, 0xAA16D3DE, 0x0DEAC7D6);
+        const int EnumUnderlyingType = 255;
 
         public void Write(AssetBinaryWriter writer, UAsset asset)
         {
@@ -104,6 +111,7 @@ namespace UAssetAPI.ExportTypes
             {
                 writer.Write((byte)CppForm);
             }
+            if (UnderlyingType != null) writer.Write(UnderlyingType.Value);
         }
 
         public UEnum()

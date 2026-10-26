@@ -276,7 +276,7 @@ public class TextPropertyData : PropertyData<FString>
     private static int ReadArgumentCount(AssetBinaryReader reader)
     {
         int count = reader.ReadInt32();
-        if (count < 0 || count > MainSerializer.MaxSerializedArrayLength || count > reader.BaseStream.Length - reader.BaseStream.Position)
+        if (count < 0 || count > reader.BaseStream.Length - reader.BaseStream.Position)
             throw new FormatException($"Invalid FText argument count {count} at byte {reader.BaseStream.Position - 4}");
         return count;
     }

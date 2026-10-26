@@ -412,6 +412,7 @@ internal static class EdGraphNodeClasses
         [("/Script/DataLinkEdGraph", "DataLinkEdNode")] = EdGraphNodeTail.None,
         [("/Script/DataLinkEdGraph", "DataLinkEdOutputNode")] = EdGraphNodeTail.None,
         [("/Script/DataLinkEdGraph", "K2Node_AsyncDataLinkRequest")] = EdGraphNodeTail.None,
+        [("/Script/DataLinkEdGraph", "K2Node_DataLinkRequest")] = EdGraphNodeTail.None,
         [("/Script/DataprepCore", "K2Node_DataprepActionCore")] = EdGraphNodeTail.None,
         [("/Script/DataprepCore", "K2Node_DataprepProducer")] = EdGraphNodeTail.None,
         [("/Script/DataprepEditor", "DataprepGraphActionGroupNode")] = EdGraphNodeTail.None,

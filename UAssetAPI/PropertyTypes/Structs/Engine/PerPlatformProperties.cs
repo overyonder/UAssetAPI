@@ -39,7 +39,7 @@ public abstract class TPerPlatformPropertyData<T> : PropertyData<T[]>
         PerPlatform = null;
         if (Stripped) return;
         int n = reader.ReadInt32();
-        if (n < 0 || n > MainSerializer.MaxSerializedArrayLength) throw new FormatException($"Invalid per-platform override count {n}");
+        if (n < 0 || n > (reader.BaseStream.Length - reader.BaseStream.Position)) throw new FormatException($"Invalid per-platform override count {n}");
         PerPlatform = new List<KeyValuePair<FName, T>>(n);
         for (int i = 0; i < n; i++) PerPlatform.Add(new(reader.ReadFName(), ReadValue(reader)));
     }

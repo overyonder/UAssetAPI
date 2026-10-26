@@ -403,7 +403,7 @@ internal static class EdGraphPinSerialization
     internal static int ReadCount(AssetBinaryReader reader, int minimumBytes)
     {
         int count = reader.ReadInt32();
-        if (count < 0 || count > MainSerializer.MaxSerializedArrayLength || count > (reader.BaseStream.Length - reader.BaseStream.Position) / minimumBytes)
+        if (count < 0 || count > (reader.BaseStream.Length - reader.BaseStream.Position) / minimumBytes)
             throw new FormatException($"Invalid pin array count {count} at byte {reader.BaseStream.Position - 4}");
         return count;
     }

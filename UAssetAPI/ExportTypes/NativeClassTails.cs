@@ -390,14 +390,24 @@ public static class NativeClassTails
     /// <summary>Reads the tails from an export's leftover bytes, keeping them only if they account for every byte.</summary>
     internal static void TryRead(UAsset asset, Export export)
     {
-        if (export is not NormalExport normal || export.Extras == null || export.Extras.Length == 0) return;
+        if (export is not NormalExport normal) return;
         if (asset.IsFilterEditorOnly || asset.HasUnversionedProperties) return;
+        if (normal.LeadingNative != null && normal.LeadingFields == null) ReadLeading(asset, normal);
+        if (export.Extras == null || export.Extras.Length == 0) return;
         // LinkerLoad.cpp loads a class default object through UClass::SerializeDefaultObject, which reads only its tagged
         // properties; the class's own Serialize, and so its tail, never runs for it
         if (export.ObjectFlags.HasFlag(EObjectFlags.RF_ClassDefaultObject)) return;
         var native = NativeBaseOf(asset, export.ClassIndex);
         if (native == null) return;
-        if (TailsOf(asset, native.Value) is not NativeClassTail tails) return;
+        NativeClassTail tails;
+        string[] chain;
+        if (TableKeyOf(asset, native.Value) is { } key)
+        {
+            tails = NativeClassTailTable.Tails[key];
+            NativeClassTailTable.Chains.TryGetValue(key, out chain);
+        }
+        else if (ProjectChains.TryGetValue(native.Value.Class, out chain)) tails = NativeClassTail.None;
+        else return;
         try
         {
             using var stream = new MemoryStream(export.Extras);
@@ -589,22 +599,43 @@ public static class NativeClassTails
                     if (data.BodySetupImplicitObjects != 0) return;
                 }
             }
-            if (ClassSerializers.Handles(tails))
+            if (chain != null)
             {
                 long start = stream.Position;
-                data.ClassFields = ClassSerializers.Read(tails, reader, asset);
+                long fileOffset = export.SerialOffset + export.SerialSize - export.Extras.Length;
+                data.ClassFields = ClassSerializers.Read(chain, reader, asset, normal, fileOffset);
                 long end = stream.Position;
                 stream.Position = start;
                 data.ClassFieldBytes = reader.ReadBytes((int)(end - start));
             }
-            if (stream.Position != stream.Length) { export.NativeTailFailure = $"{stream.Length - stream.Position} bytes after the {tails} tails"; return; }
+            if (stream.Position != stream.Length) { export.NativeTailFailure = $"{stream.Length - stream.Position} bytes after the {Describe(tails, chain)} tails"; return; }
             export.NativeTails = data;
             export.Extras = Array.Empty<byte>();
         }
         catch (Exception ex) when (ex is FormatException or EndOfStreamException or ArgumentException or InvalidOperationException)
         {
-            export.NativeTailFailure = $"{tails} tails: {ex.GetType().Name}: {ex.Message.Split('\n')[0]}";
+            export.NativeTailFailure = $"{Describe(tails, chain)} tails: {ex.GetType().Name}: {ex.Message.Split('\n')[0]}";
         }
+    }
+
+    static string[] ChainOf(UAsset asset, Export export)
+    {
+        if (asset == null) return null;
+        var native = NativeBaseOf(asset, export.ClassIndex);
+        if (native == null || TableKeyOf(asset, native.Value) is not { } key) return null;
+        return NativeClassTailTable.Chains.TryGetValue(key, out var chain) ? chain : null;
+    }
+
+    /// <summary>Whether the export's class writes JSON before its tagged properties: UAssetImportData and its subclasses, UFbxSceneImportData.</summary>
+    internal static bool WritesLeadingJson(UAsset asset, Export export) =>
+        ChainOf(asset, export) is { } chain && (Array.IndexOf(chain, "UAssetImportData") >= 0 || Array.IndexOf(chain, "UFbxSceneImportData") >= 0);
+
+    internal static bool IsFbxSceneImportData(UAsset asset, Export export) => ChainOf(asset, export) is { } chain && Array.IndexOf(chain, "UFbxSceneImportData") >= 0;
+
+    /// <summary>Native data before the tagged properties that no export subclass read is reported, not decoded.</summary>
+    static void ReadLeading(UAsset asset, NormalExport export)
+    {
+        export.NativeTailFailure = $"{export.LeadingNative.Length} undecoded bytes before the tagged properties";
     }
 
     internal static void Write(AssetBinaryWriter writer, NativeClassTailData data)
@@ -706,11 +737,13 @@ public static class NativeClassTails
 
     static int BoundsSize(UAsset asset) => asset.ObjectVersionUE5 >= ObjectVersionUE5.LARGE_WORLD_COORDINATES ? 7 * 8 : 7 * 4;
 
-    // StaticMeshComponent.h FPaintedVertex: position (FVector), normal (FVector4f, or a packed normal before
-    // IncreaseNormalPrecision), colour.
-    static int PaintedVertexSize(UAsset asset) =>
-        (asset.ObjectVersionUE5 >= ObjectVersionUE5.LARGE_WORLD_COORDINATES ? 24 : 12) +
-        (asset.GetCustomVersion(RenderingGuid) >= IncreaseNormalPrecision ? 16 : 4) + 4;
+    // StaticMeshComponent.h FPaintedVertex: position (FVector), normal (FVector4, or a packed normal before
+    // IncreaseNormalPrecision), colour; FVector and FVector4 are doubles with large world coordinates.
+    static int PaintedVertexSize(UAsset asset)
+    {
+        bool lwc = asset.ObjectVersionUE5 >= ObjectVersionUE5.LARGE_WORLD_COORDINATES;
+        return (lwc ? 24 : 12) + (asset.GetCustomVersion(RenderingGuid) >= IncreaseNormalPrecision ? (lwc ? 32 : 16) : 4) + 4;
+    }
 
     /// <summary>SceneComponent.cpp writes its cooked-bounds flag only when bComputeBoundsOnceForGame is set.</summary>
     static bool ComputesBoundsOnce(NormalExport export, (string Module, string Class) native)
@@ -756,7 +789,7 @@ public static class NativeClassTails
         {
             lod.PaintedVertexCount = reader.ReadInt32();
             if (lod.PaintedVertexCount < 0) throw new FormatException("Invalid painted vertex count");
-            lod.PaintedVertices = reader.ReadBytes(lod.PaintedVertexCount * PaintedVertexSize(asset));
+            lod.PaintedVertices = reader.ReadBytes(checked(lod.PaintedVertexCount * PaintedVertexSize(asset)));
         }
         return lod;
     }
@@ -797,11 +830,16 @@ public static class NativeClassTails
     /// The engine table names engine classes. A project or plugin C++ class outside it inherits its nearest table
     /// ancestor's tails, found through the mappings' super chain; with no mappings or no table ancestor it has none.
     /// </summary>
-    static NativeClassTail? TailsOf(UAsset asset, (string Module, string Class) native)
+    static (string Module, string Class)? TableKeyOf(UAsset asset, (string Module, string Class) native)
     {
         for (int depth = 0; depth < 64; depth++)
         {
-            if (NativeClassTailTable.Tails.TryGetValue(native, out var tails)) return tails;
+            if (NativeClassTailTable.Tails.ContainsKey(native)) return native;
+            if ((native.Module != null && NativeClassTailTable.ClassRedirects.TryGetValue(native.Module + "." + native.Class, out var moved))
+                || NativeClassTailTable.ClassRedirects.TryGetValue(native.Class, out moved))
+            {
+                if (moved != native) { native = moved; continue; }
+            }
             var schema = asset.Mappings?.GetSchemaFromName(native.Class, asset, native.Module, false);
             if (schema != null && !string.IsNullOrEmpty(schema.SuperType) && !string.IsNullOrEmpty(schema.SuperTypeModulePath))
             {
@@ -812,7 +850,7 @@ public static class NativeClassTails
             // without a schema, a project class's parent comes from its declaration; the parent's module isn't declared,
             // so an engine class reached that way is matched by name
             if (!ProjectNativeParents.TryGetValue(native.Class, out var parent)) return null;
-            if (TailsByClassName.Value.TryGetValue(parent, out var byName)) return byName;
+            if (KeysByClassName.Value.TryGetValue(parent, out var byName)) return byName;
             native = (null, parent);
         }
         return null;
@@ -824,12 +862,33 @@ public static class NativeClassTails
     /// </summary>
     public static readonly Dictionary<string, string> ProjectNativeParents = new();
 
-    static readonly Lazy<Dictionary<string, NativeClassTail>> TailsByClassName = new(() =>
+    /// <summary>Sample-project classes with their own serializers, outside the engine table, by reflected name.</summary>
+    static readonly Dictionary<string, string[]> ProjectChains = new()
     {
-        var byName = new Dictionary<string, NativeClassTail>();
-        foreach (var kv in NativeClassTailTable.Tails) byName.TryAdd(kv.Key.Class, kv.Value);
+        ["PointCloudImpl"] = ["UPointCloudImpl"], // CitySample RuleProcessor PointCloudImpl.cpp
+    };
+
+    static readonly Lazy<Dictionary<string, (string Module, string Class)>> KeysByClassName = new(() =>
+    {
+        var byName = new Dictionary<string, (string Module, string Class)>();
+        foreach (var kv in NativeClassTailTable.Tails) byName.TryAdd(kv.Key.Class, kv.Key);
         return byName;
     });
+
+    static string Describe(NativeClassTail tails, string[] chain) =>
+        chain == null ? tails.ToString() : tails == NativeClassTail.None ? string.Join(", ", chain) : $"{tails}, {string.Join(", ", chain)}";
+
+    /// <summary>
+    /// Whether the export's class saves no tagged properties: its Serialize, or an ancestor's its own calls, never calls
+    /// UObject::Serialize (NNEModelData.cpp, InterchangeBaseNode.cpp, LandscapeEdgeFixup.cpp).
+    /// </summary>
+    internal static bool WritesNoTaggedProperties(UAsset asset, Export export)
+    {
+        if (asset == null || asset.IsFilterEditorOnly || asset.HasUnversionedProperties) return false;
+        if (ChainOf(asset, export) is not { } chain) return false;
+        foreach (string c in chain) if (c is "UNNEModelData" or "UInterchangeBaseNode" or "ULandscapeHeightmapTextureEdgeFixup") return true;
+        return false;
+    }
 
     static (string Module, string Class)? NativeBaseOf(UAsset asset, FPackageIndex classIndex, int depth = 0)
     {
@@ -852,7 +911,7 @@ public static class NativeClassTails
             string path = asset.FindAssetOnDiskFromPath(package);
             if (path != null && File.Exists(path))
             {
-                var other = new UAsset(path, EngineVersion.UNKNOWN, asset.Mappings, CustomSerializationFlags.SkipParsingBytecode | CustomSerializationFlags.SkipPreloadDependencyLoading);
+                var other = new UAsset(path, EngineVersion.UNKNOWN, asset.Mappings, CustomSerializationFlags.SkipParsingBytecode | CustomSerializationFlags.SkipPreloadDependencyLoading | CustomSerializationFlags.ReadOnlyStreaming);
                 var classExport = other.Exports.OfType<StructExport>().FirstOrDefault(e => e.ObjectName?.ToString() == name);
                 if (classExport != null) result = NativeBaseOf(other, classExport.SuperStruct, depth + 1);
             }

@@ -36,6 +36,21 @@ namespace UAssetAPI.ExportTypes
         public bool HasLeadingFourNullBytes = false;
 
         /// <summary>
+        /// Native data a class's Serialize writes before calling Super::Serialize, so before the tagged properties: the bytes
+        /// up to <see cref="Export.ScriptSerializationStartOffset"/>.
+        /// </summary>
+        public byte[] LeadingNative;
+
+        /// <summary>What <see cref="LeadingNative"/> decodes to, when its class is known.</summary>
+        public object LeadingFields;
+
+        /// <summary>
+        /// Whether the class's Serialize never calls UObject::Serialize, so the export has no tagged properties and no object
+        /// GUID: everything in it is the class's native data.
+        /// </summary>
+        public bool HasNoTaggedProperties;
+
+        /// <summary>
         /// Gets or sets the value associated with the specified key. This operation loops linearly, so it may not be suitable for high-performance environments.
         /// </summary>
         /// <param name="key">The key associated with the value to get or set.</param>
@@ -130,7 +145,13 @@ namespace UAssetAPI.ExportTypes
                 HasLeadingFourNullBytes = ScriptSerializationStartOffset == 4;
                 if (HasLeadingFourNullBytes && reader.ReadInt32() != 0) throw new FormatException("Expected four null bytes before the tagged properties");
             }
-            else if (reader.Asset.ObjectVersionUE5 > ObjectVersionUE5.DATA_RESOURCES && reader.Asset.ObjectVersionUE5 < ObjectVersionUE5.ASSETREGISTRY_PACKAGEBUILDDEPENDENCIES && !ObjectFlags.HasFlag(EObjectFlags.RF_ClassDefaultObject))
+            else if (reader.Asset.ObjectVersionUE5 >= ObjectVersionUE5.SCRIPT_SERIALIZATION_OFFSET && !ObjectFlags.HasFlag(EObjectFlags.RF_ClassDefaultObject)
+                && ScriptSerializationStartOffset > reader.BaseStream.Position - SerialOffset)
+            {
+                // a subclass may already have read its own leading data
+                LeadingNative = reader.ReadBytes((int)(ScriptSerializationStartOffset - (reader.BaseStream.Position - SerialOffset)));
+            }
+            else if (reader.Asset.ObjectVersionUE5 > ObjectVersionUE5.DATA_RESOURCES && reader.Asset.ObjectVersionUE5 < ObjectVersionUE5.SCRIPT_SERIALIZATION_OFFSET && !ObjectFlags.HasFlag(EObjectFlags.RF_ClassDefaultObject))
             {
                 int dummy = reader.ReadInt32();
                 if (dummy == 0)
@@ -146,6 +167,8 @@ namespace UAssetAPI.ExportTypes
 
             Data = new List<PropertyData>();
             PropertyData bit;
+            HasNoTaggedProperties = !ObjectFlags.HasFlag(EObjectFlags.RF_ClassDefaultObject) && NativeClassTails.WritesNoTaggedProperties(reader.Asset as UAsset, this);
+            if (HasNoTaggedProperties) return;
 
             var unversionedHeader = new FUnversionedHeader(reader);
             if (!reader.Asset.HasUnversionedProperties && reader.Asset.ObjectVersionUE5 >= ObjectVersionUE5.PROPERTY_TAG_EXTENSION_AND_OVERRIDABLE_SERIALIZATION)
@@ -190,6 +213,8 @@ namespace UAssetAPI.ExportTypes
         public override void Write(AssetBinaryWriter writer)
         {
             long exportStart = writer.BaseStream.Position;
+            if (HasNoTaggedProperties) return;
+            if (LeadingNative != null) writer.Write(LeadingNative);
             // 5.4-specific problem; unclear why this occurs
             if (HasLeadingFourNullBytes && writer.Asset.ObjectVersionUE5 > ObjectVersionUE5.DATA_RESOURCES && writer.Asset.ObjectVersionUE5 < ObjectVersionUE5.ASSETREGISTRY_PACKAGEBUILDDEPENDENCIES && !ObjectFlags.HasFlag(EObjectFlags.RF_ClassDefaultObject))
             {

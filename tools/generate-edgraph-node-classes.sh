@@ -14,8 +14,8 @@ engine=$1; shift
 out=$(dirname "$0")/../UAssetAPI/ExportTypes/EdGraphNodeClasses.g.cs
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
 
-rg --no-config --no-heading --with-filename -U -o --glob '*.h' \
-  -e 'class\s+(?:[A-Z0-9_]+_API\s+)?U(\w+)\s*(?:final\s*)?:\s*public\s+(?:\w+::)*U(\w+)' -r 'U$1 U$2' \
+rg -P --no-config --no-heading --with-filename -U -o --glob '*.h' \
+  -e 'class\s+(?:\w+(?:\([^)]*\))?\s+)*?U([A-Z]\w*)\s*(?:final\s*)?:\s*public\s+(?:\w+::)*U(\w+)' -r 'U$1 U$2' \
   "$engine/Source" "$engine/Plugins" "$@" |
   awk -F: '{split($NF,a," "); if (a[1] != a[2]) print a[1]"\t"a[2]"\t"$1}' | sort -u > "$tmp/inherit.tsv"
 

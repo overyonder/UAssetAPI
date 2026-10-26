@@ -112,7 +112,9 @@ public class UnrealBinaryReader : BinaryReader
     public virtual FString ReadFString()
     {
         int length = this.ReadInt32();
-        if (Math.Abs((long)length) > MainSerializer.MaxSerializedArrayLength)
+        // a string can't be longer than what is left of the archive (a long Find-in-Blueprints tag is valid)
+        long bytes = length < 0 ? -(long)length * 2 : length;
+        if (bytes > BaseStream.Length - BaseStream.Position)
             throw new FormatException($"Invalid FString length {length} at byte {BaseStream.Position - 4}");
         switch (length)
         {
@@ -135,7 +137,7 @@ public class UnrealBinaryReader : BinaryReader
     public virtual FString ReadUtf8String()
     {
         int length = this.ReadInt32();
-        if (length > MainSerializer.MaxSerializedArrayLength) throw new InvalidOperationException($"Invalid UTF-8 string length: {length}");
+        if (length < 0 || length > BaseStream.Length - BaseStream.Position) throw new FormatException($"Invalid UTF-8 string length: {length}");
         switch (length)
         {
             case < 0:
@@ -264,7 +266,7 @@ public class AssetBinaryReader : UnrealBinaryReader
     public T[] ReadArray<T>(int length, Func<T> readElement)
     {
         if (length == 0) return [];
-        if (length > MainSerializer.MaxSerializedArrayLength) throw new FormatException($"Invalid array length: {length}");
+        if (length < 0 || length > BaseStream.Length - BaseStream.Position) throw new FormatException($"Invalid array length: {length}");
         T[] newData = new T[length];
         for (int i = 0; i < length; i++)
         {

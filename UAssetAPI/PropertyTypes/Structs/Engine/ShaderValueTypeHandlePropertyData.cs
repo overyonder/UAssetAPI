@@ -37,7 +37,7 @@ public class FShaderValueType
         {
             result.Name = reader.ReadFName();
             int n = reader.ReadInt32();
-            if (n < 0 || n > MainSerializer.MaxSerializedArrayLength) throw new FormatException($"Invalid shader struct element count {n}");
+            if (n < 0 || n > (reader.BaseStream.Length - reader.BaseStream.Position)) throw new FormatException($"Invalid shader struct element count {n}");
             result.StructElements = new List<KeyValuePair<FName, FShaderValueType>>(n);
             for (int i = 0; i < n; i++) result.StructElements.Add(new(reader.ReadFName(), Read(reader, depth + 1)));
         }
