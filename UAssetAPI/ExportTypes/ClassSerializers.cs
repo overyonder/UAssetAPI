@@ -380,7 +380,9 @@ internal static class ClassSerializers
                 case "UInstancedStaticMeshComponent": ReadInstancedStaticMesh(d, c, r, asset, Rest); break;
                 case "UHierarchicalInstancedStaticMeshComponent":
                     // HierarchicalInstancedStaticMesh.cpp: the cluster tree, bulk serialized
-                    d["ClusterTree"] = c.Bulk();
+                    // FClusterNode: bound minimum, first child, bound maximum, last child, first and last instance, minimum and
+                    // maximum instance scale
+                    d["ClusterTree"] = c.Bulk("fffifffiiiffffff");
                     break;
                 case "UInstancedSkinnedMeshComponent": ReadInstancedSkinnedMesh(d, c, r, asset, Rest); break;
                 case "AInstancedFoliageActor": ReadInstancedFoliageActor(d, c, r, asset); break;
@@ -1042,8 +1044,10 @@ internal static class ClassSerializers
         if (asset.GetCustomVersion(MobileGuid) < 1) d["PerInstanceSMData_DEPRECATED"] = c.Bulk();
         else if (hasData)
         {
-            d["PerInstanceSMData"] = c.Bulk(asset.ObjectVersionUE5 < ObjectVersionUE5.LARGE_WORLD_COORDINATES ? 64 : null);
-            if (asset.GetCustomVersion(RenderingGuid) >= 40) d["PerInstanceSMCustomData"] = c.Bulk();
+            // FInstancedStaticMeshInstanceData: the instance's FMatrix, single precision before large world coordinates
+            bool lwc = asset.ObjectVersionUE5 >= ObjectVersionUE5.LARGE_WORLD_COORDINATES;
+            d["PerInstanceSMData"] = c.Bulk(new string(lwc ? 'd' : 'f', 16), lwc ? null : 64);
+            if (asset.GetCustomVersion(RenderingGuid) >= 40) d["PerInstanceSMCustomData"] = c.Bulk("f");
         }
         if (cooked) d["RenderData"] = rest();
     }
@@ -1153,14 +1157,18 @@ internal static class ClassSerializers
         d["Bounds"] = new object[] { c.Vector(), c.Vector(), lwc ? r.ReadDouble() : r.ReadSingle() };
         if (asset.ObjectVersion < ObjectVersion.VER_UE4_BSP_UNDO_FIX || asset.ObjectVersion < ObjectVersion.VER_UE4_REMOVE_ZONES_FROM_MODEL)
             throw new FormatException("Model saved before REMOVE_ZONES_FROM_MODEL");
-        d["Vectors"] = c.Bulk(); d["Points"] = c.Bulk(); d["Nodes"] = c.Bulk();
+        // Model.h: FVector3f vectors and points; FBspNode: plane, vertex pool, surface, vertex index, component index and node
+        // index (uint16), component element, back, front, plane, collision bound, two zones, vertex count, flags, two leaves
+        d["Vectors"] = c.Bulk("fff"); d["Points"] = c.Bulk("fff");
+        d["Nodes"] = c.Bulk("ffffiiihhiiiiibbbbii");
         d["Surfs"] = c.Array(() => new object[] { new FPackageIndex(r), r.ReadUInt32(), r.ReadInt32(), r.ReadInt32(), r.ReadInt32(), r.ReadInt32(),
             r.ReadInt32(), new FPackageIndex(r), c.Floats(4), r.ReadSingle(), r.ReadInt32() }, 56);
-        d["Verts"] = c.Bulk();
+        // FVert: point index, side, shadow and back-face shadow texture coordinates
+        d["Verts"] = c.Bulk("iiffff");
         d["NumSharedSides"] = r.ReadInt32();
         if (!asset.IsFilterEditorOnly || asset.ObjectVersion < ObjectVersion.VER_UE4_REMOVE_UNUSED_UPOLYS_FROM_UMODEL)
         {
-            d["Polys"] = new FPackageIndex(r); d["LeafHulls"] = c.Bulk(); d["Leaves"] = c.Bulk();
+            d["Polys"] = new FPackageIndex(r); d["LeafHulls"] = c.Bulk("i"); d["Leaves"] = c.Bulk("i");
         }
         d["RootOutside"] = c.Bool(); d["Linked"] = c.Bool();
         d["NumUniqueVertices"] = r.ReadUInt32();
@@ -1271,6 +1279,32 @@ internal static class ClassSerializers
         /// types matches their memory layout. <paramref name="elementSize"/> overrides the stored size where per-element
         /// serialization was forced on an older layout.
         /// </summary>
+        /// <summary>
+        /// A bulk-serialized array decoded by its element layout, one character per field: f float, d double, i int32, u uint32,
+        /// h uint16, b uint8. A layout of one repeated field gives a flat array of that type; otherwise each element's fields.
+        /// The layout's size must equal the stored element size.
+        /// </summary>
+        public object Bulk(string layout, int? elementSize = null)
+        {
+            int stored = r.ReadInt32();
+            int size = elementSize ?? stored;
+            int width = layout.Sum(f => f switch { 'f' or 'i' or 'u' => 4, 'd' => 8, 'h' => 2, 'b' => 1, _ => throw new ArgumentException(layout) });
+            if (size != width) throw new FormatException($"Bulk element of {size} bytes, layout {layout} of {width}");
+            int n = Count(size);
+            object Field(char f) => f switch { 'f' => r.ReadSingle(), 'd' => r.ReadDouble(), 'i' => r.ReadInt32(), 'u' => r.ReadUInt32(), 'h' => r.ReadUInt16(), _ => r.ReadByte() };
+            if (layout.Distinct().Count() == 1)
+            {
+                switch (layout[0])
+                {
+                    case 'f': { var a = new float[n * layout.Length]; for (int i = 0; i < a.Length; i++) a[i] = r.ReadSingle(); return a; }
+                    case 'd': { var a = new double[n * layout.Length]; for (int i = 0; i < a.Length; i++) a[i] = r.ReadDouble(); return a; }
+                    case 'i': { var a = new int[n * layout.Length]; for (int i = 0; i < a.Length; i++) a[i] = r.ReadInt32(); return a; }
+                }
+            }
+            var rows = new List<object[]>(n);
+            for (int e = 0; e < n; e++) rows.Add(layout.Select(Field).ToArray());
+            return rows;
+        }
         public object[] Bulk(int? elementSize = null)
         {
             int stored = r.ReadInt32();
