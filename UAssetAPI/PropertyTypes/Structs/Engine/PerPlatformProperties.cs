@@ -5,8 +5,17 @@ using UAssetAPI.UnrealTypes;
 
 namespace UAssetAPI.PropertyTypes.Structs;
 
+/// <summary>
+/// PerPlatformProperties.h operator&lt;&lt;(FArchive&amp;, TPerPlatformProperty&amp;): a strip flag, the default value and,
+/// unless stripped by cooking, the per-platform overrides keyed by platform group name. Value holds the default only.
+/// </summary>
 public abstract class TPerPlatformPropertyData<T> : PropertyData<T[]>
 {
+    /// <summary>Whether cooking stripped the per-platform overrides.</summary>
+    public bool Stripped;
+    /// <summary>Platform group name to override, present when not stripped.</summary>
+    public List<KeyValuePair<FName, T>> PerPlatform;
+
     public TPerPlatformPropertyData(FName name) : base(name)
     {
         Value = [];
@@ -15,6 +24,38 @@ public abstract class TPerPlatformPropertyData<T> : PropertyData<T[]>
     public TPerPlatformPropertyData()
     {
         Value = [];
+    }
+
+    public override bool HasCustomStructSerialization => true;
+
+    protected abstract T ReadValue(AssetBinaryReader reader);
+    protected abstract void WriteValue(AssetBinaryWriter writer, T value);
+
+    public override void Read(AssetBinaryReader reader, bool includeHeader, long leng1, long leng2 = 0, PropertySerializationContext serializationContext = PropertySerializationContext.Normal)
+    {
+        if (includeHeader) this.ReadEndPropertyTag(reader);
+        Stripped = reader.ReadBooleanInt();
+        Value = [ReadValue(reader)];
+        PerPlatform = null;
+        if (Stripped) return;
+        int n = reader.ReadInt32();
+        if (n < 0 || n > MainSerializer.MaxSerializedArrayLength) throw new FormatException($"Invalid per-platform override count {n}");
+        PerPlatform = new List<KeyValuePair<FName, T>>(n);
+        for (int i = 0; i < n; i++) PerPlatform.Add(new(reader.ReadFName(), ReadValue(reader)));
+    }
+
+    public override int Write(AssetBinaryWriter writer, bool includeHeader, PropertySerializationContext serializationContext = PropertySerializationContext.Normal)
+    {
+        if (includeHeader) this.WriteEndPropertyTag(writer);
+        long start = writer.BaseStream.Position;
+        writer.WriteBooleanInt(Stripped);
+        WriteValue(writer, Value.Length > 0 ? Value[0] : default);
+        if (!Stripped)
+        {
+            writer.Write(PerPlatform?.Count ?? 0);
+            if (PerPlatform != null) foreach (var kv in PerPlatform) { writer.Write(kv.Key); WriteValue(writer, kv.Value); }
+        }
+        return (int)(writer.BaseStream.Position - start);
     }
 }
 
@@ -31,35 +72,10 @@ public class PerPlatformBoolPropertyData : TPerPlatformPropertyData<bool>
     public override bool HasCustomStructSerialization => true;
     public override FString PropertyType => CurrentPropertyType;
 
-    public override void Read(AssetBinaryReader reader, bool includeHeader, long leng1, long leng2 = 0, PropertySerializationContext serializationContext = PropertySerializationContext.Normal)
-    {
-        if (includeHeader)
-        {
-            this.ReadEndPropertyTag(reader);
-        }
+    protected override bool ReadValue(AssetBinaryReader reader) => reader.ReadBooleanInt();
+    protected override void WriteValue(AssetBinaryWriter writer, bool value) => writer.WriteBooleanInt(value);
 
-        int numEntries = reader.ReadInt32();
-        Value = new bool[numEntries];
-        for (int i = 0; i < numEntries; i++)
-        {
-            Value[i] = reader.ReadInt32() == 1;
-        }
-    }
 
-    public override int Write(AssetBinaryWriter writer, bool includeHeader, PropertySerializationContext serializationContext = PropertySerializationContext.Normal)
-    {
-        if (includeHeader)
-        {
-            this.WriteEndPropertyTag(writer);
-        }
-
-        writer.Write(Value.Length);
-        for (int i = 0; i < Value.Length; i++)
-        {
-            writer.WriteBooleanInt(Value[i]);
-        }
-        return sizeof(int) + sizeof(int) * Value.Length;
-    }
 
     public override void FromString(string[] d, UAsset asset)
     {
@@ -92,38 +108,12 @@ public class PerPlatformFloatPropertyData : TPerPlatformPropertyData<float>
     public PerPlatformFloatPropertyData() { }
 
     private static readonly FString CurrentPropertyType = new FString("PerPlatformFloat");
-    public override bool HasCustomStructSerialization { get { return true; } }
     public override FString PropertyType => CurrentPropertyType;
 
-    public override void Read(AssetBinaryReader reader, bool includeHeader, long leng1, long leng2 = 0, PropertySerializationContext serializationContext = PropertySerializationContext.Normal)
-    {
-        if (includeHeader)
-        {
-            this.ReadEndPropertyTag(reader);
-        }
+    protected override float ReadValue(AssetBinaryReader reader) => reader.ReadSingle();
+    protected override void WriteValue(AssetBinaryWriter writer, float value) => writer.Write(value);
 
-        int numEntries = reader.ReadInt32();
-        Value = new float[numEntries];
-        for (int i = 0; i < numEntries; i++)
-        {
-            Value[i] = reader.ReadSingle();
-        }
-    }
 
-    public override int Write(AssetBinaryWriter writer, bool includeHeader, PropertySerializationContext serializationContext = PropertySerializationContext.Normal)
-    {
-        if (includeHeader)
-        {
-            this.WriteEndPropertyTag(writer);
-        }
-
-        writer.Write(Value.Length);
-        for (int i = 0; i < Value.Length; i++)
-        {
-            writer.Write(Value[i]);
-        }
-        return sizeof(int) + sizeof(float) * Value.Length;
-    }
 
     public override void FromString(string[] d, UAsset asset)
     {
@@ -159,35 +149,10 @@ public class PerPlatformIntPropertyData : TPerPlatformPropertyData<int>
     public override bool HasCustomStructSerialization => true;
     public override FString PropertyType => CurrentPropertyType;
 
-    public override void Read(AssetBinaryReader reader, bool includeHeader, long leng1, long leng2 = 0, PropertySerializationContext serializationContext = PropertySerializationContext.Normal)
-    {
-        if (includeHeader)
-        {
-            this.ReadEndPropertyTag(reader);
-        }
+    protected override int ReadValue(AssetBinaryReader reader) => reader.ReadInt32();
+    protected override void WriteValue(AssetBinaryWriter writer, int value) => writer.Write(value);
 
-        int numEntries = reader.ReadInt32();
-        Value = new int[numEntries];
-        for (int i = 0; i < numEntries; i++)
-        {
-            Value[i] = reader.ReadInt32();
-        }
-    }
 
-    public override int Write(AssetBinaryWriter writer, bool includeHeader, PropertySerializationContext serializationContext = PropertySerializationContext.Normal)
-    {
-        if (includeHeader)
-        {
-            this.WriteEndPropertyTag(writer);
-        }
-
-        writer.Write(Value.Length);
-        for (int i = 0; i < Value.Length; i++)
-        {
-            writer.Write(Value[i]);
-        }
-        return sizeof(int) + sizeof(int) * Value.Length;
-    }
 
     public override void FromString(string[] d, UAsset asset)
     {
@@ -223,36 +188,10 @@ public class PerPlatformFrameRatePropertyData : TPerPlatformPropertyData<FFrameR
     public override bool HasCustomStructSerialization => true;
     public override FString PropertyType => CurrentPropertyType;
 
-    public override void Read(AssetBinaryReader reader, bool includeHeader, long leng1, long leng2 = 0, PropertySerializationContext serializationContext = PropertySerializationContext.Normal)
-    {
-        if (includeHeader)
-        {
-            this.ReadEndPropertyTag(reader);
-        }
+    protected override FFrameRate ReadValue(AssetBinaryReader reader) => new FFrameRate(reader.ReadInt32(), reader.ReadInt32());
+    protected override void WriteValue(AssetBinaryWriter writer, FFrameRate value) => value.Write(writer);
 
-        int numEntries = reader.ReadInt32();
-        Value = new FFrameRate[numEntries];
-        for (int i = 0; i < numEntries; i++)
-        {
-            Value[i] = new FFrameRate(reader.ReadInt32(), reader.ReadInt32());
-        }
-    }
 
-    public override int Write(AssetBinaryWriter writer, bool includeHeader, PropertySerializationContext serializationContext = PropertySerializationContext.Normal)
-    {
-        if (includeHeader)
-        {
-            this.WriteEndPropertyTag(writer);
-        }
-
-        writer.Write(Value.Length);
-        for (int i = 0; i < Value.Length; i++)
-        {
-            writer.Write(Value[i].Numerator);
-            writer.Write(Value[i].Denominator);
-        }
-        return sizeof(int) + sizeof(int) * 2 * Value.Length;
-    }
 
     public override void FromString(string[] d, UAsset asset)
     {

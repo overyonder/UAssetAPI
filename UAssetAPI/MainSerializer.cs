@@ -41,6 +41,8 @@ namespace UAssetAPI
     /// </summary>
     public static class MainSerializer
     {
+        /// <summary>UASSET_TRACE_PROPERTIES prints every tagged property's name, type, size and stream span to stderr.</summary>
+        static readonly bool TraceProperties = Environment.GetEnvironmentVariable("UASSET_TRACE_PROPERTIES") != null;
 #if DEBUGVERBOSE
         private static PropertyData lastType;
 #endif
@@ -515,7 +517,9 @@ namespace UAssetAPI
             PropertyData result;
             try
             {
+                if (TraceProperties) Console.Error.WriteLine($"TRACE prop {parentName}.{name} {type} len={leng} at {reader.BaseStream.Position}");
                 result = TypeToClass(type, name, ancestry, parentName, parentModulePath, reader.Asset, reader, leng, propertyTagFlags, ArrayIndex, includeHeader, isZero, typeName);
+                if (TraceProperties) Console.Error.WriteLine($"TRACE end {parentName}.{name} at {reader.BaseStream.Position}");
             }
             catch (Exception exception)
             {

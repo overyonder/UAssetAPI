@@ -106,8 +106,16 @@ public class StructPropertyData : PropertyData<List<PropertyData>>
         PropertyData data = null;
 
         var unversionedHeader = new FUnversionedHeader(reader);
-        while ((data = MainSerializer.Read(reader, Ancestry, StructType, FName.DefineDummy(reader.Asset, reader.Asset.InternalAssetPath + ((Ancestry?.Ancestors?.Count ?? 0) == 0 ? string.Empty : ("." + Ancestry.Parent))), unversionedHeader, true)) != null)
+        while (true)
         {
+            try { data = MainSerializer.Read(reader, Ancestry, StructType, FName.DefineDummy(reader.Asset, reader.Asset.InternalAssetPath + ((Ancestry?.Ancestors?.Count ?? 0) == 0 ? string.Empty : ("." + Ancestry.Parent))), unversionedHeader, true); }
+            catch (Exception ex) when (resultingList.Count > 0)
+            {
+                // a misread usually belongs to the property before the one that failed, so name it
+                var last = resultingList[^1];
+                throw new FormatException($"{ex.Message} (after {StructType}.{last.Name} {last.PropertyType} read from {last.Offset})", ex);
+            }
+            if (data == null) break;
             resultingList.Add(data);
         }
 
