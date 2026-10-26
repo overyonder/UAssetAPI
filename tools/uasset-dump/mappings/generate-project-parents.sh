@@ -6,4 +6,4 @@
 set -euo pipefail
 xargs -d '\n' rg --no-config --no-heading --no-filename -U -P -o \
   -e '(?:UCLASS|UINTERFACE)\s*\((?:[^()]|\([^()]*\))*\)\s*class\s+(?:\w+(?:\([^)]*\))?\s+)*?[UA](\w+)\s*(?:final\s*)?:\s*public\s+(?:\w+::)*[UA](\w+)' \
-  -r '$1	$2' < "$1" | awk -F'\t' '$1 != $2' | sort -u
+  -r '$1	$2' < "$1" | awk -F'\t' -v OFS='\t' '{for (i = 1; i <= 2; i++) sub(/^DEPRECATED_/, "", $i)} $1 != $2' | sort -u

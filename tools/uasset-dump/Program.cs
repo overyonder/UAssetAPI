@@ -24,8 +24,24 @@ if (Environment.GetEnvironmentVariable("UASSET_ENGINE") is { Length: > 0 } engin
         if (Directory.Exists(content)) UAsset.MountPoints.TryAdd(Path.GetFileNameWithoutExtension(plugin), content);
     }
 }
+// UASSET_MOUNTS names a list of .uplugin paths inside projects; each mounts its Content under the plugin's name for
+// packages of the project that holds it (the directory above its Plugins directory)
+if (Environment.GetEnvironmentVariable("UASSET_MOUNTS") is { Length: > 0 } mounts)
+    foreach (var plugin in File.ReadLines(mounts))
+    {
+        int at = plugin.IndexOf("/Plugins/");
+        if (at < 0) continue;
+        string project = plugin.Substring(0, at);
+        if (!UAsset.ProjectMountPoints.TryGetValue(project, out var table)) UAsset.ProjectMountPoints[project] = table = new(StringComparer.OrdinalIgnoreCase);
+        table.TryAdd(Path.GetFileNameWithoutExtension(plugin), Path.Combine(Path.GetDirectoryName(plugin), "Content"));
+    }
 if (Environment.GetEnvironmentVariable("UASSET_PARENTS") is { Length: > 0 } parents)
     foreach (var line in File.ReadLines(parents)) { var f = line.Split('\t'); if (f.Length == 2) NativeClassTails.ProjectNativeParents.TryAdd(f[0], f[1]); }
+// UASSET_MAPS names TSVs, separated by ':', of owning type, property name, key struct and value struct for map
+// properties no mappings describe: project-maps.tsv from the project headers, and removed-maps.tsv for engine
+// properties a later release removed, whose types the property tag and the data that follows establish
+if (Environment.GetEnvironmentVariable("UASSET_MAPS") is { Length: > 0 } maps)
+    foreach (var line in maps.Split(':', StringSplitOptions.RemoveEmptyEntries).SelectMany(File.ReadLines)) { var f = line.Split('\t'); if (f.Length == 4) UAssetAPI.PropertyTypes.Objects.MapPropertyData.AddProjectMapStructTypes(f[0], f[1], f[2], f[3]); }
 // Several can be given, separated by ':'; the first one that defines a schema or enum wins.
 Usmap mappings = null;
 foreach (var m in (Environment.GetEnvironmentVariable("UASSET_USMAP") ?? "").Split(':', StringSplitOptions.RemoveEmptyEntries))
@@ -41,7 +57,15 @@ if (args[0] == "--failures") { var a = new UAsset(args[1], EngineVersion.UNKNOWN
 // --json <package> <out.json>: every decoded export, for reading a reference asset's graphs, tables and settings
 if (args[0] == "--json") { var a = new UAsset(args[1], EngineVersion.UNKNOWN, mappings, CustomSerializationFlags.ReadOnlyStreaming); File.WriteAllText(args[2], a.SerializeJson(true)); return; }
 if (args[0] == "--text") { var a = new UAsset(args[1], EngineVersion.UNKNOWN, mappings, CustomSerializationFlags.ReadOnlyStreaming); using var w = new StreamWriter(args[2]); TextDump.Write(a, w); return; }
-if (args[0] == "--tails") { var a = new UAsset(args[1], EngineVersion.UNKNOWN, mappings, CustomSerializationFlags.ReadOnlyStreaming); foreach (var e in a.Exports.Where(e => args.Length < 4 || e.ObjectName.ToString() == args[3])) if (e.NativeTails?.ClassFields != null) File.AppendAllText(args[2], e.ObjectName + "\n" + Newtonsoft.Json.JsonConvert.SerializeObject(e.NativeTails.ClassFields, Newtonsoft.Json.Formatting.Indented) + "\n"); return; }
+// --native <package> <out> [export]: per export, everything decoded outside its tagged properties (native class tails,
+// specialized export data, bytecode), as UAssetAPI's JSON without the tagged Data that --text prints
+if (args[0] == "--native")
+{
+    var a = new UAsset(args[1], EngineVersion.UNKNOWN, mappings, CustomSerializationFlags.ReadOnlyStreaming);
+    using var w = new StreamWriter(args[2]);
+    WriteNative(a, w, args.Length >= 4 ? args[3] : null);
+    return;
+}
 if (args[0] == "--check")
 {
     foreach (var path in args.Skip(1))
@@ -89,57 +113,51 @@ if (args[0] == "--audit")
         UAsset asset;
         try { asset = new UAsset(path, EngineVersion.UNKNOWN, mappings, CustomSerializationFlags.ReadOnlyStreaming); }
         catch (Exception ex) { Console.WriteLine($"fail\t{ex.GetType().Name}\t0\t{ex.Message.Split('\n')[0]}\t{path}"); continue; }
-        for (int ei = 0; ei < asset.Exports.Count; ei++)
-        {
-            var e = asset.Exports[ei];
-            // a class defined in this package (a Blueprint's generated class) is named by its export
-            var cls = e.ClassIndex.IsExport() ? e.ClassIndex.ToExport(asset).ObjectName.ToString() : e.GetExportClassType()?.Value?.Value ?? "?";
-            var name = e.ObjectName?.ToString() ?? "?";
-            // a rig hierarchy keeps its bytes for writing; it counts as decoded when its parse read all of them
-            if (e is RigHierarchyExport rh)
-            {
-                if (!rh.FullyParsed) Console.WriteLine($"rigparse\t{cls}\t{rh.Data?.Length ?? 0}\t{name} [{rh.ParseFailure}]\t{path}");
-                else foreach (var c in rh.Components ?? new()) if (c.Payload.Length > 0) Console.WriteLine($"rigcomponent\t{c.ScriptStruct}\t{c.Payload.Length}\t{name}.{c.Name}\t{path}");
-                continue;
-            }
-            if (e is RigVMExport vm)
-            {
-                if (!vm.FullyParsed) Console.WriteLine($"rigparse\t{cls}\t{vm.Data?.Length ?? 0}\t{name} [{vm.ParseFailure}]\t{path}");
-                else if (vm.VM.LegacyDiscardedOnLoad) Console.WriteLine($"vmdiscarded\t{cls}\t{vm.Data?.Length ?? 0}\t{name}\t{path}");
-                continue;
-            }
-            if (e is RawExport r)
-            {
-                var why = asset.ExportParseFailures.FirstOrDefault(f => f.ExportIndex == ei);
-                string reason = why == null ? "" : $" [{why.ExceptionType?.Split('.').Last()}: {why.ExceptionMessage?.Split('\n')[0]}]";
-                Console.WriteLine($"raw\t{cls}\t{r.Data?.Length ?? 0}\t{name}{reason}\t{path}");
-                // UASSET_DETAILS prints each raw export's whole exception chain
-                if (why != null && Environment.GetEnvironmentVariable("UASSET_DETAILS") != null) Console.WriteLine(why.ExceptionDetails);
-                continue;
-            }
-            // a class default object loads through UClass::SerializeDefaultObject, which reads only its tagged properties, so
-            // bytes after them never reach the engine: "cdotrail" keeps them apart from undecoded data the engine does read
-            if (e.Extras != null && e.Extras.Length > 0) Console.WriteLine($"{(e.ObjectFlags.HasFlag(EObjectFlags.RF_ClassDefaultObject) ? "cdotrail" : "extras")}\t{cls}\t{e.Extras.Length}\t{name}{(e.NativeTailFailure == null ? "" : $" [{e.NativeTailFailure}]")}\t{path}");
-            if (e is NormalExport n) foreach (var p in n.Data) Walk(p, cls, name, path);
-        }
+        Audit(asset, path, Console.Out);
         Console.WriteLine($"done\t-\t{asset.Exports.Count}\t-\t{path}");
     }
     return;
 }
 
-static void Walk(object o, string cls, string name, string path)
+// --dataset <root> <out dir> <package>...: parses each package once and writes <out dir>/<path under root>.txt (--text)
+// and .native.json (--native, when any export has native data); prints the --audit lines, then an index line: index,
+// package, text file, native file or -, export count, residue count
+if (args[0] == "--dataset")
+{
+    string root = Path.GetFullPath(args[1]), outDir = args[2];
+    foreach (var path in args.Skip(3))
+    {
+        UAsset asset;
+        try { asset = new UAsset(path, EngineVersion.UNKNOWN, mappings, CustomSerializationFlags.ReadOnlyStreaming); }
+        catch (Exception ex) { Console.WriteLine($"fail\t{ex.GetType().Name}\t0\t{ex.Message.Split('\n')[0]}\t{path}"); continue; }
+        string rel = Path.GetRelativePath(root, Path.GetFullPath(path)), text = rel + ".txt", native = rel + ".native.json";
+        Directory.CreateDirectory(Path.GetDirectoryName(Path.Combine(outDir, rel)));
+        using (var w = new StreamWriter(Path.Combine(outDir, text))) TextDump.Write(asset, w);
+        bool any;
+        using (var w = new StreamWriter(Path.Combine(outDir, native))) any = WriteNative(asset, w, null);
+        if (!any) { File.Delete(Path.Combine(outDir, native)); native = "-"; }
+        var residues = new StringWriter();
+        Audit(asset, path, residues);
+        Console.Write(residues);
+        int count = residues.ToString().Count(ch => ch == '\n');
+        Console.WriteLine($"index\t{path}\t{text}\t{native}\t{asset.Exports.Count}\t{count}");
+    }
+    return;
+}
+
+static void Walk(object o, string cls, string name, string path, TextWriter w)
 {
     switch (o)
     {
         case UAssetAPI.PropertyTypes.Objects.UnknownPropertyData u:
-            Console.WriteLine($"rawprop\t{u.SerializingPropertyType?.Value ?? "?"}\t{u.Value?.Length ?? 0}\t{name}.{u.Name?.Value?.Value}\t{path}"); return;
+            w.WriteLine($"rawprop\t{u.SerializingPropertyType?.Value ?? "?"}\t{u.Value?.Length ?? 0}\t{name}.{u.Name?.Value?.Value}\t{path}"); return;
         case UAssetAPI.PropertyTypes.Structs.RawStructPropertyData rs:
-            Console.WriteLine($"rawstruct\t{rs.StructType?.Value?.Value ?? "?"}\t{rs.Value?.Length ?? 0}\t{name}.{rs.Name?.Value?.Value}{(rs.FailureReason == null ? "" : $" [{rs.FailureReason}]")}\t{path}"); return;
+            w.WriteLine($"rawstruct\t{rs.StructType?.Value?.Value ?? "?"}\t{rs.Value?.Length ?? 0}\t{name}.{rs.Name?.Value?.Value}{(rs.FailureReason == null ? "" : $" [{rs.FailureReason}]")}\t{path}"); return;
         case UAssetAPI.PropertyTypes.Objects.PropertyData pd:
             var v = pd.GetType().GetProperty("Value")?.GetValue(pd) ?? pd.GetType().GetField("Value")?.GetValue(pd);
-            if (v is UAssetAPI.PropertyTypes.Objects.PropertyData) Walk(v, cls, name, path);
-            else if (v is System.Collections.IDictionary d) { foreach (System.Collections.DictionaryEntry kv in d) { Walk(kv.Key, cls, name, path); Walk(kv.Value, cls, name, path); } }
-            else if (v is System.Collections.IEnumerable en && v is not string && v is not byte[]) foreach (var x in en) Walk(x, cls, name, path);
+            if (v is UAssetAPI.PropertyTypes.Objects.PropertyData) Walk(v, cls, name, path, w);
+            else if (v is System.Collections.IDictionary d) { foreach (System.Collections.DictionaryEntry kv in d) { Walk(kv.Key, cls, name, path, w); Walk(kv.Value, cls, name, path, w); } }
+            else if (v is System.Collections.IEnumerable en && v is not string && v is not byte[]) foreach (var x in en) Walk(x, cls, name, path, w);
             return;
     }
 }
@@ -204,3 +222,58 @@ if (args[0] == "--write") { File.WriteAllBytes(args[2], new UAsset(args[1], Engi
 
 var version = args.Length > 1 ? Enum.Parse<EngineVersion>(args[1]) : EngineVersion.UNKNOWN;
 Console.Out.Write(new UAsset(args[0], version, mappings).SerializeJson(true));
+
+void Audit(UAsset asset, string path, TextWriter o)
+{
+    for (int ei = 0; ei < asset.Exports.Count; ei++)
+    {
+        var e = asset.Exports[ei];
+        // a class defined in this package (a Blueprint's generated class) is named by its export
+        var cls = e.ClassIndex.IsExport() ? e.ClassIndex.ToExport(asset).ObjectName.ToString() : e.GetExportClassType()?.Value?.Value ?? "?";
+        var name = e.ObjectName?.ToString() ?? "?";
+        // a rig hierarchy keeps its bytes for writing; it counts as decoded when its parse read all of them
+        if (e is RigHierarchyExport rh)
+        {
+            if (!rh.FullyParsed) o.WriteLine($"rigparse\t{cls}\t{rh.Data?.Length ?? 0}\t{name} [{rh.ParseFailure}]\t{path}");
+            else foreach (var c in rh.Components ?? new()) if (c.Payload.Length > 0) o.WriteLine($"rigcomponent\t{c.ScriptStruct}\t{c.Payload.Length}\t{name}.{c.Name}\t{path}");
+            continue;
+        }
+        if (e is RigVMExport vm)
+        {
+            if (!vm.FullyParsed) o.WriteLine($"rigparse\t{cls}\t{vm.Data?.Length ?? 0}\t{name} [{vm.ParseFailure}]\t{path}");
+            continue;
+        }
+        if (e is RawExport r)
+        {
+            var why = asset.ExportParseFailures.FirstOrDefault(f => f.ExportIndex == ei);
+            string reason = why == null ? "" : $" [{why.ExceptionType?.Split('.').Last()}: {why.ExceptionMessage?.Split('\n')[0]}]";
+            o.WriteLine($"raw\t{cls}\t{r.Data?.Length ?? 0}\t{name}{reason}\t{path}");
+            // UASSET_DETAILS prints each raw export's whole exception chain
+            if (why != null && Environment.GetEnvironmentVariable("UASSET_DETAILS") != null) o.WriteLine(why.ExceptionDetails);
+            continue;
+        }
+        // a class default object loads through UClass::SerializeDefaultObject, which reads only its tagged properties, so
+        // bytes after them never reach the engine: "cdotrail" keeps them apart from undecoded data the engine does read
+        if (e.Extras != null && e.Extras.Length > 0) o.WriteLine($"{(e.ObjectFlags.HasFlag(EObjectFlags.RF_ClassDefaultObject) ? "cdotrail" : "extras")}\t{cls}\t{e.Extras.Length}\t{name}{(e.NativeTailFailure == null ? "" : $" [{e.NativeTailFailure}]")}\t{path}");
+        if (e is NormalExport n) foreach (var p in n.Data) Walk(p, cls, name, path, o);
+    }
+}
+
+bool WriteNative(UAsset a, TextWriter w, string only)
+{
+    bool any = false;
+    for (int i = 0; i < a.Exports.Count; i++)
+    {
+        var e = a.Exports[i];
+        if (only != null && e.ObjectName.ToString() != only) continue;
+        var o = Newtonsoft.Json.Linq.JObject.Parse(a.SerializeJsonObject(e, true));
+        foreach (var header in new[] { "Data", "ObjectName", "OuterIndex", "ClassIndex", "SuperIndex", "TemplateIndex", "ObjectFlags", "SerialSize", "SerialOffset", "ScriptSerializationStartOffset", "ScriptSerializationEndOffset", "bForcedExport", "bNotForClient", "bNotForServer", "PackageGuid", "IsInheritedInstance", "PackageFlags", "bNotAlwaysLoadedForEditorGame", "bIsAsset", "GeneratePublicHash", "SerializationBeforeSerializationDependencies", "CreateBeforeSerializationDependencies", "SerializationBeforeCreateDependencies", "CreateBeforeCreateDependencies", "PublicExportHash", "Padding", "Extras", "$type", "SerializationControl", "Operation", "HasLeadingFourNullBytes", "HasNoTaggedProperties" })
+            o.Remove(header);
+        foreach (var p in o.Properties().ToList()) if (p.Value.Type == Newtonsoft.Json.Linq.JTokenType.Null || (p.Value is Newtonsoft.Json.Linq.JArray arr && arr.Count == 0)) p.Remove();
+        if (!o.HasValues) continue;
+        any = true;
+        w.WriteLine($"#{i + 1} {e.GetExportClassType()?.Value?.Value} {e.ObjectName}");
+        w.WriteLine(o.ToString(Newtonsoft.Json.Formatting.Indented));
+    }
+    return any;
+}
