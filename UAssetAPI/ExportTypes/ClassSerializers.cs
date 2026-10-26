@@ -181,6 +181,22 @@ internal static class ClassSerializers
                     d["WholeDbHash"] = rest[^20..];
                     break;
                 }
+                case "UMetaHumanCharacter":
+                {
+                    // MetaHumanCharacter MetaHumanCharacter.cpp: the face and body state and DNA bulk data, the synthesized face
+                    // textures (one per EFaceTextureType), the high-resolution body textures (one per EBodyTextureType, from
+                    // BodyTexturesSerialized), the posed body target states by target mesh key (from
+                    // BodyTargetPoseStatesSerialized) and the face model coefficients at each target pose (from
+                    // FaceModelCoefficientsAtTargetPoseSerialized); a target mesh key is its body, head and combined meshes
+                    int v = Ver(MetaHumanCharacterGuid);
+                    d["FaceState"] = c.EditorBulk(); d["FaceDNA"] = c.EditorBulk(); d["BodyState"] = c.EditorBulk(); d["BodyDNA"] = c.EditorBulk();
+                    d["SynthesizedFaceTextures"] = c.Fixed(9, c.EditorBulk);
+                    if (v >= 1) d["HighResBodyTextures"] = c.Fixed(11, c.EditorBulk);
+                    object Key() => new object[] { new FSoftObjectPath(r), new FSoftObjectPath(r), new FSoftObjectPath(r) };
+                    if (v >= 2) d["BodyTargetPoseStates"] = c.Array(() => new object[] { Key(), c.EditorBulk() }, 48);
+                    if (v >= 3) d["FaceModelCoefficientsAtTargetPose"] = c.Array(() => new object[] { Key(), c.Array(() => r.ReadSingle(), 4) }, 16);
+                    break;
+                }
                 case "USoundClass":
                     // SoundClass.cpp: before SOUND_CLASS_GRAPH_EDITOR the editor node positions by sound class
                     if (asset.ObjectVersion < ObjectVersion.VER_UE4_SOUND_CLASS_GRAPH_EDITOR)
@@ -563,6 +579,7 @@ internal static class ClassSerializers
     }
 
     const int MantleDbSerialize = 17;
+    static readonly Guid MetaHumanCharacterGuid = UAPUtils.GUID(0x0C5DB848, 0x021757CE, 0x0C42843E, 0x0CA16973);
     static readonly Guid EnterpriseGuid = UAPUtils.GUID(0x9DFFBCD6, 0x494F0158, 0xE2211282, 0x3C92A888);
 
     /// <summary>

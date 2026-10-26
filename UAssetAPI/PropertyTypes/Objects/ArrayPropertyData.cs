@@ -56,6 +56,31 @@ public class ArrayPropertyData : PropertyData<PropertyData[]>
     private static readonly FString CurrentPropertyType = new FString("ArrayProperty");
     public override FString PropertyType => CurrentPropertyType;
 
+    /// <summary>
+    /// A large array of a fixed-size native math struct (FVector3f and the like), kept as its packed elements instead of one
+    /// struct property per element: ML Deformer models hold millions of morph target deltas.
+    /// </summary>
+    [JsonProperty] public byte[] PackedElements;
+    [JsonProperty] public int PackedCount;
+
+    const int PackThreshold = 65536;
+
+    static int PackedElementSize(string structType, UAsset asset)
+    {
+        bool lwc = asset.ObjectVersionUE5 >= ObjectVersionUE5.LARGE_WORLD_COORDINATES;
+        return structType switch
+        {
+            "Vector3f" or "Rotator3f" or "IntVector" => 12,
+            "Vector2f" or "IntPoint" => 8,
+            "Vector4f" or "Quat4f" or "LinearColor" => 16,
+            "Color" => 4,
+            "Vector" or "Rotator" => lwc ? 24 : 12,
+            "Vector2D" => lwc ? 16 : 8,
+            "Vector4" or "Quat" => lwc ? 32 : 16,
+            _ => 0,
+        };
+    }
+
     public override void Read(AssetBinaryReader reader, bool includeHeader, long leng1, long leng2 = 0, PropertySerializationContext serializationContext = PropertySerializationContext.Normal)
     {
         if (includeHeader && !reader.Asset.HasUnversionedProperties)
@@ -155,6 +180,14 @@ public class ArrayPropertyData : PropertyData<PropertyData[]>
                     StructGUID = structGUID
                 };
             }
+            else if (numEntries > PackThreshold && PackedElementSize(fullType.Value.Value, reader.Asset) is > 0 and var size)
+            {
+                DummyStruct = new StructPropertyData(name, fullType) { StructGUID = structGUID };
+                PackedCount = numEntries;
+                PackedElements = reader.ReadBytes(checked(numEntries * size));
+                Value = [];
+                return;
+            }
             else
             {
                 var propTypeName = PropertyTypeName?.GetParameter(0);
@@ -176,6 +209,22 @@ public class ArrayPropertyData : PropertyData<PropertyData[]>
         {
             if (numEntries == 0)
             {
+                Value = [];
+                return;
+            }
+
+            int primitive = ArrayType.Value.Value switch
+            {
+                "FloatProperty" or "IntProperty" or "UInt32Property" => 4,
+                "DoubleProperty" or "Int64Property" or "UInt64Property" => 8,
+                "Int16Property" or "UInt16Property" => 2,
+                "Int8Property" => 1,
+                _ => 0,
+            };
+            if (numEntries > PackThreshold && primitive > 0 && !reader.Asset.HasUnversionedProperties)
+            {
+                PackedCount = numEntries;
+                PackedElements = reader.ReadBytes(checked(numEntries * primitive));
                 Value = [];
                 return;
             }
@@ -245,10 +294,10 @@ public class ArrayPropertyData : PropertyData<PropertyData[]>
         }
 
         int here = (int)writer.BaseStream.Position;
-        writer.Write(Value.Length);
+        writer.Write(PackedElements != null ? PackedCount : Value.Length);
         if (ArrayType?.Value?.Value == "StructProperty" && ShouldSerializeStructsDifferently && !writer.Asset.HasUnversionedProperties)
         {
-            if (Value.Length == 0 && DummyStruct == null)
+            if (Value.Length == 0 && DummyStruct == null && PackedElements == null)
             {
                 // let's try and reconstruct DummyStruct, if we can
                 if (arrayStructType == null && writer.Asset.ArrayStructTypeOverride.ContainsKey(this.Name.Value.Value))
@@ -290,6 +339,7 @@ public class ArrayPropertyData : PropertyData<PropertyData[]>
                 if (writer.Asset.ObjectVersionUE5 >= ObjectVersionUE5.PROPERTY_TAG_EXTENSION_AND_OVERRIDABLE_SERIALIZATION) writer.Write(InnerTagExtensions ?? new byte[1]);
             }
 
+            if (PackedElements != null) writer.Write(PackedElements);
             for (int i = 0; i < Value.Length; i++)
             {
                 ((StructPropertyData)Value[i]).StructType = fullType;
@@ -309,6 +359,7 @@ public class ArrayPropertyData : PropertyData<PropertyData[]>
         }
         else
         {
+            if (PackedElements != null) writer.Write(PackedElements);
             for (int i = 0; i < Value.Length; i++)
             {
                 if (serializationContext == PropertySerializationContext.CanBeZero && ((CanBeZeroStream)writer.BaseStream).HasWrittenNonZero) return -1;

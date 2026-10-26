@@ -99,6 +99,12 @@ public struct FSoftObjectPath : IEquatable<FSoftObjectPath>, IStruct<FSoftObject
     /// </summary>
     public FString SubPathString;
 
+    /// <summary>
+    /// A sub path saved as UTF-8 without a terminator under an FString count, which SoftObjectPath.cpp
+    /// SoftObjectPathLoadSubPathWorkaround accepts before SoftObjectPathUtf8SubPaths; kept as saved so it writes back.
+    /// </summary>
+    public bool SubPathUnterminatedUtf8;
+
     public FSoftObjectPath(FName packageName, FName assetName, FString subPathString)
     {
         AssetPath = new FTopLevelAssetPath(packageName, assetName);
@@ -138,9 +144,23 @@ public struct FSoftObjectPath : IEquatable<FSoftObjectPath>, IStruct<FSoftObject
             {
                 AssetPath = new FTopLevelAssetPath(null, null);
             }
-            SubPathString = reader.Asset.GetCustomVersion<FFortniteMainBranchObjectVersion>() < FFortniteMainBranchObjectVersion.SoftObjectPathUtf8SubPaths
-                ? reader.ReadFString()
-                : reader.ReadUtf8String();
+            if (reader.Asset.GetCustomVersion<FFortniteMainBranchObjectVersion>() >= FFortniteMainBranchObjectVersion.SoftObjectPathUtf8SubPaths)
+                SubPathString = reader.ReadUtf8String();
+            else if (reader.Asset.ObjectVersionUE5 < ObjectVersionUE5.FSOFTOBJECTPATH_REMOVE_ASSET_PATH_FNAMES)
+                SubPathString = reader.ReadFString();
+            else
+            {
+                // SoftObjectPath.cpp SoftObjectPathLoadSubPathWorkaround: a wide string ends in a NUL, an ANSI string ends in a
+                // NUL, anything else is UTF-8 without one
+                long start = reader.BaseStream.Position;
+                int n = reader.ReadInt32();
+                long bytes = n < 0 ? -(long)n * 2 : n;
+                if (n == int.MinValue || bytes > reader.BaseStream.Length - reader.BaseStream.Position) throw new FormatException($"Invalid soft object sub path length {n} at {start}");
+                var data = reader.ReadBytes((int)bytes);
+                bool terminated = bytes == 0 || (n < 0 ? data[^1] == 0 && data[^2] == 0 : data[^1] == 0);
+                if (terminated) { reader.BaseStream.Position = start; SubPathString = reader.ReadFString(); }
+                else { SubPathString = new FString(System.Text.Encoding.UTF8.GetString(data), System.Text.Encoding.UTF8); SubPathUnterminatedUtf8 = true; }
+            }
         }
     }
 
@@ -174,7 +194,13 @@ public struct FSoftObjectPath : IEquatable<FSoftObjectPath>, IStruct<FSoftObject
         if (writer.Asset.ObjectVersionUE5 >= ObjectVersionUE5.FSOFTOBJECTPATH_REMOVE_ASSET_PATH_FNAMES) writer.Write(AssetPath.PackageName);
         writer.Write(AssetPath.AssetName);
 
-        if (writer.Asset.GetCustomVersion<FFortniteMainBranchObjectVersion>() < FFortniteMainBranchObjectVersion.SoftObjectPathUtf8SubPaths)
+        if (SubPathUnterminatedUtf8)
+        {
+            var bytes = System.Text.Encoding.UTF8.GetBytes(SubPathString.Value);
+            writer.Write(bytes.Length);
+            writer.Write(bytes);
+        }
+        else if (writer.Asset.GetCustomVersion<FFortniteMainBranchObjectVersion>() < FFortniteMainBranchObjectVersion.SoftObjectPathUtf8SubPaths)
             writer.Write(SubPathString);
         else
             writer.WriteUtf8String(SubPathString);
