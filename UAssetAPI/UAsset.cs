@@ -1094,7 +1094,7 @@ namespace UAssetAPI
                         Exports[i] = Exports[i].ConvertToChildExport<RigHierarchyExport>();
                         break;
                     case "RigVM":
-                        Exports[i] = Exports[i].ConvertToChildExport<CustomSerializedExport>();
+                        Exports[i] = Exports[i].ConvertToChildExport<RigVMExport>();
                         break;
                     case "Level":
                         Exports[i] = Exports[i].ConvertToChildExport<LevelExport>();
