@@ -22,6 +22,8 @@
 #   UMaterialInterfaceEditorOnlyData MaterialInterface.cpp: the saved-cached-expression-data flag
 #   UBodySetup           PhysicsEngine/BodySetup.cpp: BodySetupGuid, the cooked flag, and the level-set implicit
 #                        objects saved between two Fortnite versions
+#   UObjectRedirector    ObjectRedirector.cpp: DestinationObject
+#   USkyAtmosphereComponent Components/SkyAtmosphereComponent.cpp: bStaticLightingBuiltGUID
 # Other serializers of these classes in 5.8.3 save nothing after the tagged properties outside migration or cooking,
 # but some still read data that older engines saved; those reads are added as audits of older packages find them.
 # Recheck the Serialize overrides of these classes when regenerating for a new engine release.
@@ -52,6 +54,8 @@ awk -F'\t' '{p[$1]=$2; f[$1]=$3}
         if (x=="UMaterialInterface") flags="MaterialInterface|" flags
         if (x=="UMaterialInterfaceEditorOnlyData") flags="MaterialEditorOnlyData|" flags
         if (x=="UBodySetup") flags="BodySetup|" flags
+        if (x=="UObjectRedirector") flags="ObjectRedirector|" flags
+        if (x=="USkyAtmosphereComponent") flags="SkyAtmosphere|" flags
         x = (x in p) ? p[x] : ""
       }
       if (flags == "") continue

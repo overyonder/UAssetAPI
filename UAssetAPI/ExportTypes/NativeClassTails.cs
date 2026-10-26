@@ -27,6 +27,8 @@ public enum NativeClassTail
     MaterialEditorOnlyData = 512,
     BodySetup = 1024,
     MaterialInterface = 2048,
+    ObjectRedirector = 4096,
+    SkyAtmosphere = 8192,
 }
 
 /// <summary>One LOD's per-component data (StaticMeshComponent.cpp operator&lt;&lt;(FArchive&amp;, FStaticMeshComponentLODInfo&amp;)).</summary>
@@ -85,6 +87,10 @@ public class NativeClassTailData
     [JsonProperty] public Guid? BodySetupGuid;
     [JsonProperty] public bool? BodySetupIsCooked;
     [JsonProperty] public int? BodySetupImplicitObjects;
+    /// <summary>ObjectRedirector.cpp: the object the redirector points to.</summary>
+    [JsonProperty] public FPackageIndex RedirectorDestination;
+    /// <summary>Components/SkyAtmosphereComponent.cpp: bStaticLightingBuiltGUID.</summary>
+    [JsonProperty] public Guid? SkyAtmosphereLightingGuid;
 }
 
 public class FSimpleMemberReferenceData
@@ -103,7 +109,7 @@ public static class NativeClassTails
     const int ActorComponentUCSModifiedPropertiesSparseStorage = 4, SerializeSceneComponentStaticBounds = 2,
         SerializeActorLabelInCookedBuilds = 4, IncreaseNormalPrecision = 26, MeshPaintTextureUsesEditorOnly = 166,
         WorldPartitionSerializeStreamingPolicyOnCook = 74, MaterialSavedCachedData = 36, MaterialAttributeLayerParameters = 21,
-        LevelsetSerializationSupportForBodySetup = 42, DisableLevelset_v14_10 = 1;
+        LevelsetSerializationSupportForBodySetup = 42, DisableLevelset_v14_10 = 1, RemovedAtmosphericFog = 46;
 
     static bool BoolProperty(NormalExport export, string name) =>
         export.Data?.Find(p => p.Name?.ToString() == name) is PropertyTypes.Objects.BoolPropertyData b && b.Value;
@@ -150,6 +156,9 @@ public static class NativeClassTails
                 data.SceneComponentIsCooked = reader.ReadBooleanInt();
                 if (data.SceneComponentIsCooked == true) data.SceneComponentCookedBounds = reader.ReadBytes(BoundsSize(asset));
             }
+            // a legacy atmospheric fog component saved before RemovedAtmosphericFog has no lighting GUID
+            if (tails.HasFlag(NativeClassTail.SkyAtmosphere) && !(native.Value.Class == "AtmosphericFogComponent" && asset.GetCustomVersion(UE5MainStreamGuid) < RemovedAtmosphericFog))
+                data.SkyAtmosphereLightingGuid = reader.ReadGuid();
             if (tails.HasFlag(NativeClassTail.StaticMeshComponent))
             {
                 int n = reader.ReadInt32();
@@ -213,6 +222,7 @@ public static class NativeClassTails
                 data.MaterialSavedCachedExpressionData = reader.ReadBooleanInt();
                 if (data.MaterialSavedCachedExpressionData == true) return;
             }
+            if (tails.HasFlag(NativeClassTail.ObjectRedirector)) data.RedirectorDestination = new FPackageIndex(reader);
             // cooked collision data and level-set implicit objects aren't decoded: such a tail keeps its bytes
             if (tails.HasFlag(NativeClassTail.BodySetup))
             {
@@ -245,6 +255,7 @@ public static class NativeClassTails
             writer.WriteBooleanInt(data.SceneComponentIsCooked.Value);
             if (data.SceneComponentIsCooked.Value) writer.Write(data.SceneComponentCookedBounds);
         }
+        if (data.SkyAtmosphereLightingGuid != null) writer.Write(data.SkyAtmosphereLightingGuid.Value);
         if (data.StaticMeshLODData != null)
         {
             writer.Write(data.StaticMeshLODData.Count);
@@ -276,6 +287,7 @@ public static class NativeClassTails
         if (data.MaterialInstanceSavedCachedData != null) writer.WriteBooleanInt(data.MaterialInstanceSavedCachedData.Value);
         if (data.MaterialInstanceInlineShaderMaps != null) writer.Write(data.MaterialInstanceInlineShaderMaps.Value);
         if (data.MaterialSavedCachedExpressionData != null) writer.WriteBooleanInt(data.MaterialSavedCachedExpressionData.Value);
+        if (data.RedirectorDestination != null) data.RedirectorDestination.Write(writer);
         if (data.BodySetupGuid != null)
         {
             writer.Write(data.BodySetupGuid.Value);
