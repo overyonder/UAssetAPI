@@ -33,7 +33,8 @@ public class EnumPropertyData : PropertyData<FName>
 
     public override void Read(AssetBinaryReader reader, bool includeHeader, long leng1, long leng2 = 0, PropertySerializationContext serializationContext = PropertySerializationContext.Normal)
     {
-        if (reader.Asset.Mappings != null && reader.Asset.Mappings.TryGetPropertyData(Name, Ancestry, reader.Asset, out UsmapEnumData enumDat1))
+        // a tagged property names its enum in the tag; only unversioned properties take it from the mappings
+        if (reader.Asset.HasUnversionedProperties && reader.Asset.Mappings != null && reader.Asset.Mappings.TryGetPropertyData(Name, Ancestry, reader.Asset, out UsmapEnumData enumDat1))
         {
             EnumType = reader.Asset.HasUnversionedProperties ? FName.DefineDummy(reader.Asset, enumDat1.Name) : new FName(reader.Asset, enumDat1.Name);
             InnerType = reader.Asset.HasUnversionedProperties ? FName.DefineDummy(reader.Asset, enumDat1.InnerType.Type.ToString()) : new FName(reader.Asset, enumDat1.Name);
@@ -133,7 +134,8 @@ public class EnumPropertyData : PropertyData<FName>
 
     public override int Write(AssetBinaryWriter writer, bool includeHeader, PropertySerializationContext serializationContext = PropertySerializationContext.Normal)
     {
-        if (writer.Asset.Mappings != null && writer.Asset.Mappings.TryGetPropertyData(Name, Ancestry, writer.Asset, out UsmapEnumData enumDat1))
+        // a tagged property names its enum in the tag; only unversioned properties take it from the mappings
+        if (writer.Asset.HasUnversionedProperties && writer.Asset.Mappings != null && writer.Asset.Mappings.TryGetPropertyData(Name, Ancestry, writer.Asset, out UsmapEnumData enumDat1))
         {
             EnumType = writer.Asset.HasUnversionedProperties ? FName.DefineDummy(writer.Asset, enumDat1.Name) : new FName(writer.Asset, enumDat1.Name);
             InnerType = writer.Asset.HasUnversionedProperties ? FName.DefineDummy(writer.Asset, enumDat1.InnerType.Type.ToString()) : new FName(writer.Asset, enumDat1.Name);
