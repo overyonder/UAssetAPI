@@ -33,6 +33,9 @@ public class FFontData
     public int SubFaceIndex;
     public bool bIsCooked;
 
+    /// <summary>SlateCore CompositeFont.cpp FFontData::Serialize: uncooked, the struct's tagged properties.</summary>
+    public UAssetAPI.PropertyTypes.Structs.StructPropertyData Tagged;
+
     public FFontData()
     {
         bIsCooked = false;
@@ -55,6 +58,11 @@ public class FFontData
             if (reader.Asset.GetEngineVersion() >= EngineVersion.VER_UE4_20)
                 SubFaceIndex = reader.ReadInt32();
         }
+        else
+        {
+            Tagged = new UAssetAPI.PropertyTypes.Structs.StructPropertyData(FName.DefineDummy(reader.Asset, "FontData"), FName.DefineDummy(reader.Asset, "FontData"));
+            Tagged.Read(reader, false, 1, 0, UAssetAPI.PropertyTypes.Objects.PropertySerializationContext.StructFallback);
+        }
     }
 
     public int Write(AssetBinaryWriter writer)
@@ -76,6 +84,7 @@ public class FFontData
             if (writer.Asset.GetEngineVersion() >= EngineVersion.VER_UE4_20)
                 writer.Write(SubFaceIndex);
         }
+        else Tagged?.Write(writer, false, UAssetAPI.PropertyTypes.Objects.PropertySerializationContext.StructFallback);
 
         return (int)(writer.BaseStream.Position - offset);
     }

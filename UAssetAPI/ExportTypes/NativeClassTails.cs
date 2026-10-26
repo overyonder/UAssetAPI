@@ -212,6 +212,9 @@ public class NativeClassTailData
     [JsonProperty] public FPackageIndex SoundNodeWave;
     /// <summary>The fields read by <see cref="ClassSerializers"/>, by name, and the bytes they came from, for writing.</summary>
     [JsonProperty] public Dictionary<string, object> ClassFields;
+    /// <summary>StaticMesh.cpp, before SerializeMeshDescriptionBase: each source model's inline mesh description, and their bytes.</summary>
+    [JsonProperty] public List<object> StaticMeshLegacyDescriptions;
+    [JsonProperty] public byte[] StaticMeshLegacyDescriptionBytes;
     [JsonProperty] public byte[] ClassFieldBytes;
 }
 
@@ -269,12 +272,20 @@ public static class NativeClassTails
             {
                 int models = export.Data?.Find(p => p.Name?.ToString() == "SourceModels") is PropertyTypes.Objects.ArrayPropertyData a ? a.Value.Length : 0;
                 data.StaticMeshLegacyDescriptionValid = new List<bool>(models);
+                // StaticMeshSourceData.cpp SerializeBulkData: per source model whether its mesh description follows, then its
+                // FMeshDescriptionBulkData, kept as read
+                long start = stream.Position;
+                var cursor = new ClassSerializers.Cursor(reader);
+                data.StaticMeshLegacyDescriptions = new List<object>(models);
                 for (int i = 0; i < models; i++)
                 {
                     bool valid = reader.ReadBooleanInt();
                     data.StaticMeshLegacyDescriptionValid.Add(valid);
-                    if (valid) return false;
+                    data.StaticMeshLegacyDescriptions.Add(valid ? ClassSerializers.ReadMeshDescriptionBulkData(cursor, reader, asset) : null);
                 }
+                long end = stream.Position;
+                stream.Position = start;
+                data.StaticMeshLegacyDescriptionBytes = reader.ReadBytes((int)(end - start));
             }
             if (asset.GetCustomVersion<FEditorObjectVersion>() < FEditorObjectVersion.UPropertryForMeshSection) return false;
         }
@@ -357,7 +368,7 @@ public static class NativeClassTails
         writer.Write(data.StaticMeshLightingGuid.Value);
         writer.Write(data.StaticMeshSockets.Count);
         foreach (var s in data.StaticMeshSockets) s.Write(writer);
-        if (data.StaticMeshLegacyDescriptionValid != null) foreach (var v in data.StaticMeshLegacyDescriptionValid) writer.WriteBooleanInt(v);
+        if (data.StaticMeshLegacyDescriptionBytes != null) writer.Write(data.StaticMeshLegacyDescriptionBytes);
         if (data.StaticMeshHasSpeedTreeWind != null) writer.WriteBooleanInt(data.StaticMeshHasSpeedTreeWind.Value);
         writer.Write(data.StaticMeshMaterials.Count);
         foreach (var m in data.StaticMeshMaterials)

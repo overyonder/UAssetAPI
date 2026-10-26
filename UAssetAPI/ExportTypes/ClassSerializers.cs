@@ -671,7 +671,7 @@ internal static class ClassSerializers
     /// MeshDescription.cpp FMeshDescriptionBulkData::Serialize: the bulk data (an FByteBulkData before MeshDescriptionVirtualization),
     /// the GUID from MeshDescriptionBulkDataGuid and whether it is a hash from MeshDescriptionBulkDataGuidIsHash.
     /// </summary>
-    static object ReadMeshDescriptionBulkData(Cursor c, AssetBinaryReader r, UAsset asset)
+    internal static object ReadMeshDescriptionBulkData(Cursor c, AssetBinaryReader r, UAsset asset)
     {
         var e = new List<object> { asset.GetCustomVersion(UE5MainGuid) < 41 ? c.ByteBulk() : c.EditorBulk() };
         if (asset.GetCustomVersion(EditorGuid) >= 29) e.Add(r.ReadGuid());
