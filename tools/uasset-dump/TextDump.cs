@@ -97,6 +97,10 @@ static class TextDump
                     else o.WriteLine($"{ind}  {Val(a, kv.Key)} => {Val(a, kv.Value)}");
                 }
                 break;
+            case PropertyData bag when bag.RawValue is List<PropertyData> inner && inner.Count > 0:
+                o.WriteLine($"{ind}{name} ({p.GetType().Name.Replace("PropertyData", "")}):");
+                foreach (var c in inner) Prop(a, c, o, ind + "  ");
+                break;
             default:
                 o.WriteLine($"{ind}{name} = {Val(a, p)}");
                 break;

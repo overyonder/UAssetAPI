@@ -41,6 +41,7 @@ if (args[0] == "--failures") { var a = new UAsset(args[1], EngineVersion.UNKNOWN
 // --json <package> <out.json>: every decoded export, for reading a reference asset's graphs, tables and settings
 if (args[0] == "--json") { var a = new UAsset(args[1], EngineVersion.UNKNOWN, mappings, CustomSerializationFlags.ReadOnlyStreaming); File.WriteAllText(args[2], a.SerializeJson(true)); return; }
 if (args[0] == "--text") { var a = new UAsset(args[1], EngineVersion.UNKNOWN, mappings, CustomSerializationFlags.ReadOnlyStreaming); using var w = new StreamWriter(args[2]); TextDump.Write(a, w); return; }
+if (args[0] == "--tails") { var a = new UAsset(args[1], EngineVersion.UNKNOWN, mappings, CustomSerializationFlags.ReadOnlyStreaming); foreach (var e in a.Exports.Where(e => args.Length < 4 || e.ObjectName.ToString() == args[3])) if (e.NativeTails?.ClassFields != null) File.AppendAllText(args[2], e.ObjectName + "\n" + Newtonsoft.Json.JsonConvert.SerializeObject(e.NativeTails.ClassFields, Newtonsoft.Json.Formatting.Indented) + "\n"); return; }
 if (args[0] == "--check")
 {
     foreach (var path in args.Skip(1))
