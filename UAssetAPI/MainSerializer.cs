@@ -123,7 +123,7 @@ namespace UAssetAPI
                 for (int j = 0; j < allPropertyDataTypes.Length; j++)
                 {
                     Type currentPropertyDataType = allPropertyDataTypes[j];
-                    if (currentPropertyDataType == null || currentPropertyDataType.ContainsGenericParameters) continue;
+                    if (currentPropertyDataType == null || currentPropertyDataType.ContainsGenericParameters || currentPropertyDataType.IsAbstract) continue;
 
                     var testInstance = (PropertyData)Activator.CreateInstance(currentPropertyDataType);
 

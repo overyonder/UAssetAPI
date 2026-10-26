@@ -43,6 +43,9 @@
 #                        FFortniteMainBranchObjectVersion::AnimNextCombineParameterBlocksAndGraphs
 #   USoundNode           Sound/SoundNode.cpp, and USoundCue SoundCue.cpp: strip flags and, with editor data, the graph
 #                        node or the cue's graph
+#   USkeleton, UPhysicsAsset, UNiagaraSystem, UNiagaraScript, UComputeGraph, UOptimusDeformer, UDNAAsset, UDNA,
+#   UCurveExpressionsDataAsset, UAnimCurveCompressionCodec, UParticleModuleRequired, USkeletalMesh, UUAFSystem:
+#                        read by ClassSerializers.cs, which names each serializer
 #   USoundNodeWavePlayer Sound/SoundNodeWavePlayer.cpp: the hard sound wave reference, from
 #                        FFrameworkObjectVersion::HardSoundReferences
 # Other serializers of these classes in 5.8.3 save nothing after the tagged properties outside migration or cooking,
@@ -90,6 +93,18 @@ awk -F'\t' '{p[$1]=$2; f[$1]=$3}
         if (x=="UUAFAnimGraph") flags="UAFAnimGraph|" flags
         if (x=="USoundNode" || x=="USoundCue") flags="SoundNode|" flags
         if (x=="USoundNodeWavePlayer") flags="SoundNodeWavePlayer|" flags
+        if (x=="USkeleton") flags="Skeleton|" flags
+        if (x=="UPhysicsAsset") flags="PhysicsAsset|" flags
+        if (x=="UNiagaraSystem") flags="NiagaraSystem|" flags
+        if (x=="UNiagaraScript") flags="NiagaraScript|" flags
+        if (x=="UComputeGraph") flags="ComputeGraph|" flags
+        if (x=="UOptimusDeformer") flags="OptimusDeformer|" flags
+        if (x=="UDNAAsset" || x=="UDNA") flags="DNAAsset|" flags
+        if (x=="UCurveExpressionsDataAsset") flags="CurveExpressionsDataAsset|" flags
+        if (x=="UAnimCurveCompressionCodec") flags="AnimCurveCompressionCodec|" flags
+        if (x=="UParticleModuleRequired") flags="ParticleModuleRequired|" flags
+        if (x=="USkeletalMesh") flags="SkeletalMesh|" flags
+        if (x=="UUAFSystem") flags="UAFSystem|" flags
         x = (x in p) ? p[x] : ""
       }
       if (flags == "") continue

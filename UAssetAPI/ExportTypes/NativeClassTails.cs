@@ -12,7 +12,7 @@ namespace UAssetAPI.ExportTypes;
 
 /// <summary>Native serializers that add data after an actor's or component's tagged properties.</summary>
 [Flags]
-public enum NativeClassTail
+public enum NativeClassTail : long
 {
     None = 0,
     ActorComponent = 1,
@@ -41,6 +41,18 @@ public enum NativeClassTail
     Material = 8388608,
     SoundNode = 16777216,
     SoundNodeWavePlayer = 33554432,
+    Skeleton = 1L << 26,
+    PhysicsAsset = 1L << 27,
+    NiagaraSystem = 1L << 28,
+    NiagaraScript = 1L << 29,
+    ComputeGraph = 1L << 30,
+    OptimusDeformer = 1L << 31,
+    DNAAsset = 1L << 32,
+    CurveExpressionsDataAsset = 1L << 33,
+    AnimCurveCompressionCodec = 1L << 34,
+    ParticleModuleRequired = 1L << 35,
+    SkeletalMesh = 1L << 36,
+    UAFSystem = 1L << 37,
 }
 
 /// <summary>RigVMCore/RigVMPropertyPath.h operator&lt;&lt;(FArchive&amp;, FRigVMPropertyPathDescription&amp;).</summary>
@@ -198,6 +210,9 @@ public class NativeClassTailData
     [JsonProperty] public FPackageIndex SoundNodeGraphNode;
     /// <summary>Sound/SoundNodeWavePlayer.cpp: the hard reference to the sound wave.</summary>
     [JsonProperty] public FPackageIndex SoundNodeWave;
+    /// <summary>The fields read by <see cref="ClassSerializers"/>, by name, and the bytes they came from, for writing.</summary>
+    [JsonProperty] public Dictionary<string, object> ClassFields;
+    [JsonProperty] public byte[] ClassFieldBytes;
 }
 
 public class FSimpleMemberReferenceData
@@ -574,6 +589,14 @@ public static class NativeClassTails
                     if (data.BodySetupImplicitObjects != 0) return;
                 }
             }
+            if (ClassSerializers.Handles(tails))
+            {
+                long start = stream.Position;
+                data.ClassFields = ClassSerializers.Read(tails, reader, asset);
+                long end = stream.Position;
+                stream.Position = start;
+                data.ClassFieldBytes = reader.ReadBytes((int)(end - start));
+            }
             if (stream.Position != stream.Length) { export.NativeTailFailure = $"{stream.Length - stream.Position} bytes after the {tails} tails"; return; }
             export.NativeTails = data;
             export.Extras = Array.Empty<byte>();
@@ -661,6 +684,7 @@ public static class NativeClassTails
         if (data.SoundNodeStripFlags != null) writer.Write(data.SoundNodeStripFlags);
         data.SoundNodeGraphNode?.Write(writer);
         data.SoundNodeWave?.Write(writer);
+        if (data.ClassFieldBytes != null) writer.Write(data.ClassFieldBytes);
         if (data.PCGTrackedKeys != null)
         {
             writer.Write(data.PCGTrackedKeys.Count);
