@@ -295,6 +295,8 @@ static void Blobs(object v, string cls, string name, string at, string path, Tex
     switch (v)
     {
         case byte[] b:
+            // FStripDataFlags kept as their two bytes are bitfields, not data
+            if (b.Length == 2 && at.EndsWith("StripFlags")) return;
             if (b.Length > 0) w.WriteLine($"blob\t{cls}\t{b.Length}\t{name}{at}\t{path}");
             return;
         case UAssetAPI.ExportTypes.Payload pl:
