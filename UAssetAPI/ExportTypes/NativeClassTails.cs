@@ -30,6 +30,19 @@ public enum NativeClassTail
     ObjectRedirector = 4096,
     SkyAtmosphere = 8192,
     PCGComponent = 16384,
+    StaticMesh = 32768,
+}
+
+/// <summary>StaticMesh.cpp operator&lt;&lt;(FArchive&amp;, FStaticMaterial&amp;), with FMeshUVChannelInfo inline.</summary>
+public class FStaticMaterialData
+{
+    [JsonProperty] public FPackageIndex MaterialInterface;
+    [JsonProperty] public FName MaterialSlotName;
+    [JsonProperty] public FName ImportedMaterialSlotName;
+    [JsonProperty] public bool? UVChannelInitialized;
+    [JsonProperty] public bool? UVChannelOverrideDensities;
+    [JsonProperty] public float[] UVChannelLocalUVDensities;
+    [JsonProperty] public FPackageIndex OverlayMaterialInterface;
 }
 
 /// <summary>PCGSettings.h FPCGSettingsAndCulling: a settings object and whether its key is culled.</summary>
@@ -109,6 +122,21 @@ public class NativeClassTailData
     [JsonProperty] public Guid? SkyAtmosphereLightingGuid;
     /// <summary>PCG ChangeTracking/PCGChangeTracker.cpp: DynamicallyTrackedKeysToSettings.</summary>
     [JsonProperty] public List<FPCGTrackedKey> PCGTrackedKeys;
+    /// <summary>StaticMesh.cpp UStaticMesh::Serialize, in order.</summary>
+    [JsonProperty] public byte[] StaticMeshStripFlags;
+    [JsonProperty] public bool? StaticMeshIsCooked;
+    [JsonProperty] public FPackageIndex StaticMeshBodySetup;
+    [JsonProperty] public FPackageIndex StaticMeshNavCollision;
+    /// <summary>Thumbnail angle and distance, saved before VER_UE4_DEPRECATED_STATIC_MESH_THUMBNAIL_PROPERTIES_REMOVED.</summary>
+    [JsonProperty] public byte[] StaticMeshLegacyThumbnail;
+    [JsonProperty] public FString StaticMeshLegacyHighResSourceMeshName;
+    [JsonProperty] public uint? StaticMeshLegacyHighResSourceMeshCRC;
+    [JsonProperty] public Guid? StaticMeshLightingGuid;
+    [JsonProperty] public List<FPackageIndex> StaticMeshSockets;
+    /// <summary>Per source model, the mesh-description-valid flag saved between StaticMeshDeprecatedRawMesh and SerializeMeshDescriptionBase.</summary>
+    [JsonProperty] public List<bool> StaticMeshLegacyDescriptionValid;
+    [JsonProperty] public bool? StaticMeshHasSpeedTreeWind;
+    [JsonProperty] public List<FStaticMaterialData> StaticMeshMaterials;
 }
 
 public class FSimpleMemberReferenceData
@@ -128,12 +156,105 @@ public static class NativeClassTails
         SerializeActorLabelInCookedBuilds = 4, IncreaseNormalPrecision = 26, MeshPaintTextureUsesEditorOnly = 166,
         WorldPartitionSerializeStreamingPolicyOnCook = 74, MaterialSavedCachedData = 36, MaterialAttributeLayerParameters = 21,
         LevelsetSerializationSupportForBodySetup = 42, DisableLevelset_v14_10 = 1, RemovedAtmosphericFog = 46,
-        DynamicTrackingKeysSerializedInComponent = 20;
+        DynamicTrackingKeysSerializedInComponent = 20, DeprecatedHighResSourceMesh = 49, SerializeMeshDescriptionBase = 25,
+        TextureStreamingMeshUVChannelData = 10, MeshMaterialSlotOverlayMaterialAdded = 196;
     static readonly Guid PCGGuid = UAPUtils.GUID(0x2763920D, 0x0F784B39, 0x986E4BB3, 0xA88D666D);
 
     static bool BoolProperty(NormalExport export, string name) =>
         export.Data?.Find(p => p.Name?.ToString() == name) is PropertyTypes.Objects.BoolPropertyData b && b.Value;
     static readonly Guid UE5MainStreamGuid = UAPUtils.GUID(0x697DD581, 0xE64F41AB, 0xAA4A51EC, 0xBEB7B628);
+
+    /// <summary>StaticMesh.cpp UStaticMesh::Serialize; false when a branch it doesn't decode leaves the rest unread.</summary>
+    static bool ReadStaticMesh(AssetBinaryReader reader, Stream stream, UAsset asset, NormalExport export, NativeClassTailData data)
+    {
+        data.StaticMeshStripFlags = reader.ReadBytes(2);
+        bool editorDataStripped = (data.StaticMeshStripFlags[0] & 1) != 0;
+        data.StaticMeshIsCooked = reader.ReadBooleanInt();
+        data.StaticMeshBodySetup = new FPackageIndex(reader);
+        if (asset.ObjectVersion >= ObjectVersion.VER_UE4_STATIC_MESH_STORE_NAV_COLLISION) data.StaticMeshNavCollision = new FPackageIndex(reader);
+        if (!editorDataStripped)
+        {
+            // FRotator (three floats in these old packages) and a float
+            if (asset.ObjectVersion < ObjectVersion.VER_UE4_DEPRECATED_STATIC_MESH_THUMBNAIL_PROPERTIES_REMOVED) data.StaticMeshLegacyThumbnail = reader.ReadBytes(16);
+            if (asset.GetCustomVersion(RenderingGuid) < DeprecatedHighResSourceMesh)
+            {
+                data.StaticMeshLegacyHighResSourceMeshName = reader.ReadFString();
+                data.StaticMeshLegacyHighResSourceMeshCRC = reader.ReadUInt32();
+            }
+        }
+        data.StaticMeshLightingGuid = reader.ReadGuid();
+        data.StaticMeshSockets = ReadIndices(reader, stream);
+        if (!editorDataStripped)
+        {
+            if (asset.GetCustomVersion<FEditorObjectVersion>() < FEditorObjectVersion.StaticMeshDeprecatedRawMesh) return false;
+            if (asset.GetCustomVersion(UE5MainStreamGuid) < SerializeMeshDescriptionBase)
+            {
+                int models = export.Data?.Find(p => p.Name?.ToString() == "SourceModels") is PropertyTypes.Objects.ArrayPropertyData a ? a.Value.Length : 0;
+                data.StaticMeshLegacyDescriptionValid = new List<bool>(models);
+                for (int i = 0; i < models; i++)
+                {
+                    bool valid = reader.ReadBooleanInt();
+                    data.StaticMeshLegacyDescriptionValid.Add(valid);
+                    if (valid) return false;
+                }
+            }
+            if (asset.GetCustomVersion<FEditorObjectVersion>() < FEditorObjectVersion.UPropertryForMeshSection) return false;
+        }
+        if (data.StaticMeshIsCooked == true) return false;
+        if (asset.ObjectVersion >= ObjectVersion.VER_UE4_SPEEDTREE_STATICMESH)
+        {
+            data.StaticMeshHasSpeedTreeWind = reader.ReadBooleanInt();
+            if (data.StaticMeshHasSpeedTreeWind == true) return false;
+        }
+        if (asset.GetCustomVersion<FEditorObjectVersion>() < FEditorObjectVersion.RefactorMeshEditorMaterials) return false;
+        int n = reader.ReadInt32();
+        if (n < 0 || n > (stream.Length - stream.Position) / 12) return false;
+        data.StaticMeshMaterials = new List<FStaticMaterialData>(n);
+        for (int i = 0; i < n; i++)
+        {
+            var m = new FStaticMaterialData { MaterialInterface = new FPackageIndex(reader), MaterialSlotName = reader.ReadFName() };
+            if (!asset.IsFilterEditorOnly) m.ImportedMaterialSlotName = reader.ReadFName();
+            if (asset.GetCustomVersion(RenderingGuid) >= TextureStreamingMeshUVChannelData)
+            {
+                m.UVChannelInitialized = reader.ReadBooleanInt();
+                m.UVChannelOverrideDensities = reader.ReadBooleanInt();
+                m.UVChannelLocalUVDensities = new float[4];
+                for (int c = 0; c < 4; c++) m.UVChannelLocalUVDensities[c] = reader.ReadSingle();
+            }
+            if (asset.GetCustomVersion(FortniteMainGuid) >= MeshMaterialSlotOverlayMaterialAdded) m.OverlayMaterialInterface = new FPackageIndex(reader);
+            data.StaticMeshMaterials.Add(m);
+        }
+        return true;
+    }
+
+    static void WriteStaticMesh(AssetBinaryWriter writer, NativeClassTailData data)
+    {
+        writer.Write(data.StaticMeshStripFlags);
+        writer.WriteBooleanInt(data.StaticMeshIsCooked.Value);
+        data.StaticMeshBodySetup.Write(writer);
+        data.StaticMeshNavCollision?.Write(writer);
+        if (data.StaticMeshLegacyThumbnail != null) writer.Write(data.StaticMeshLegacyThumbnail);
+        if (data.StaticMeshLegacyHighResSourceMeshCRC != null) { writer.Write(data.StaticMeshLegacyHighResSourceMeshName); writer.Write(data.StaticMeshLegacyHighResSourceMeshCRC.Value); }
+        writer.Write(data.StaticMeshLightingGuid.Value);
+        writer.Write(data.StaticMeshSockets.Count);
+        foreach (var s in data.StaticMeshSockets) s.Write(writer);
+        if (data.StaticMeshLegacyDescriptionValid != null) foreach (var v in data.StaticMeshLegacyDescriptionValid) writer.WriteBooleanInt(v);
+        if (data.StaticMeshHasSpeedTreeWind != null) writer.WriteBooleanInt(data.StaticMeshHasSpeedTreeWind.Value);
+        writer.Write(data.StaticMeshMaterials.Count);
+        foreach (var m in data.StaticMeshMaterials)
+        {
+            m.MaterialInterface.Write(writer);
+            writer.Write(m.MaterialSlotName);
+            if (m.ImportedMaterialSlotName != null) writer.Write(m.ImportedMaterialSlotName);
+            if (m.UVChannelInitialized != null)
+            {
+                writer.WriteBooleanInt(m.UVChannelInitialized.Value);
+                writer.WriteBooleanInt(m.UVChannelOverrideDensities.Value);
+                foreach (var d in m.UVChannelLocalUVDensities) writer.Write(d);
+            }
+            m.OverlayMaterialInterface?.Write(writer);
+        }
+    }
 
     static List<FPackageIndex> ReadIndices(AssetBinaryReader reader, Stream stream)
     {
@@ -243,6 +364,7 @@ public static class NativeClassTails
                 if (data.MaterialSavedCachedExpressionData == true) return;
             }
             if (tails.HasFlag(NativeClassTail.ObjectRedirector)) data.RedirectorDestination = new FPackageIndex(reader);
+            if (tails.HasFlag(NativeClassTail.StaticMesh) && !ReadStaticMesh(reader, stream, asset, normal, data)) return;
             if (tails.HasFlag(NativeClassTail.PCGComponent) && asset.GetCustomVersion(PCGGuid) >= DynamicTrackingKeysSerializedInComponent)
             {
                 int keys = reader.ReadInt32();
@@ -325,6 +447,7 @@ public static class NativeClassTails
         if (data.MaterialInstanceInlineShaderMaps != null) writer.Write(data.MaterialInstanceInlineShaderMaps.Value);
         if (data.MaterialSavedCachedExpressionData != null) writer.WriteBooleanInt(data.MaterialSavedCachedExpressionData.Value);
         if (data.RedirectorDestination != null) data.RedirectorDestination.Write(writer);
+        if (data.StaticMeshMaterials != null) WriteStaticMesh(writer, data);
         if (data.PCGTrackedKeys != null)
         {
             writer.Write(data.PCGTrackedKeys.Count);
