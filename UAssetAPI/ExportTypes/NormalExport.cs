@@ -122,8 +122,15 @@ namespace UAssetAPI.ExportTypes
 
         public override void Read(AssetBinaryReader reader, int nextStarting = 0)
         {
-            // 5.4-specific problem; unclear why this occurs
-            if (reader.Asset.ObjectVersionUE5 > ObjectVersionUE5.DATA_RESOURCES && reader.Asset.ObjectVersionUE5 < ObjectVersionUE5.ASSETREGISTRY_PACKAGEBUILDDEPENDENCIES && !ObjectFlags.HasFlag(EObjectFlags.RF_ClassDefaultObject))
+            // 5.4-specific problem; unclear why this occurs. From SCRIPT_SERIALIZATION_OFFSET the export table records where the
+            // tagged properties start, so four leading bytes exist only when it says they do; guessing from zero bytes would
+            // swallow the start of a first tag whose name is name map entry 0
+            if (reader.Asset.ObjectVersionUE5 >= ObjectVersionUE5.SCRIPT_SERIALIZATION_OFFSET && reader.Asset.ObjectVersionUE5 < ObjectVersionUE5.ASSETREGISTRY_PACKAGEBUILDDEPENDENCIES && !ObjectFlags.HasFlag(EObjectFlags.RF_ClassDefaultObject))
+            {
+                HasLeadingFourNullBytes = ScriptSerializationStartOffset == 4;
+                if (HasLeadingFourNullBytes && reader.ReadInt32() != 0) throw new FormatException("Expected four null bytes before the tagged properties");
+            }
+            else if (reader.Asset.ObjectVersionUE5 > ObjectVersionUE5.DATA_RESOURCES && reader.Asset.ObjectVersionUE5 < ObjectVersionUE5.ASSETREGISTRY_PACKAGEBUILDDEPENDENCIES && !ObjectFlags.HasFlag(EObjectFlags.RF_ClassDefaultObject))
             {
                 int dummy = reader.ReadInt32();
                 if (dummy == 0)
