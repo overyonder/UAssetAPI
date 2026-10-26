@@ -256,6 +256,13 @@ public class AssetBinaryReader : UnrealBinaryReader
         return null;
     }
 
+    /// <summary>A UObject* as the archive writes it: a package index here, something else in an archive with its own encoding.</summary>
+    public virtual int ReadObjectIndex() => ReadInt32();
+    /// <summary>Whether object references are this package's import and export indices.</summary>
+    public virtual bool PackageIndices => true;
+    /// <summary>Whether an FText is written as its display string alone.</summary>
+    public virtual bool TextAsString => false;
+
     public virtual FName ReadFName()
     {
         int nameMapPointer = this.ReadInt32();

@@ -288,6 +288,13 @@ public class TextPropertyData : PropertyData<FString>
             this.ReadEndPropertyTag(reader);
         }
 
+        if (reader.TextAsString)
+        {
+            HistoryType = TextHistoryType.None;
+            CultureInvariantString = reader.ReadFString();
+            return;
+        }
+
         if (reader.Asset.ObjectVersion < ObjectVersion.VER_UE4_FTEXT_HISTORY)
         {
             CultureInvariantString = reader.ReadFString();

@@ -238,7 +238,21 @@ internal static class ClassSerializers
                 case "UInterchangeAssetImportData":
                     // InterchangeAssetImportData.cpp: from SerializedInterchangeObjectStoring the node container (a TArray64<uint8>
                     // of its serialized form) and the pipelines (class path and JSON pairs)
-                    if (Ver(InterchangeGuid) >= 1) { d["CachedNodeContainer"] = c.Bytes64(); d["CachedPipelines"] = c.Array(() => new object[] { c.Str(), c.Str() }, 8); }
+                    if (Ver(InterchangeGuid) >= 1)
+                    {
+                        // InterchangeBaseNodeContainer.cpp SerializeNodeContainerData, written with the package's custom versions:
+                        // the node count, then each node's class full name and its UInterchangeBaseNode::Serialize, its attributes
+                        byte[] container = c.Bytes64();
+                        if (container.Length > 0)
+                        {
+                            using var nr = new AssetBinaryReader(new MemoryStream(container), asset);
+                            var nc = new Cursor(nr);
+                            d["CachedNodeContainer"] = nc.Array(() => new object[] { nc.Str(), ReadAttributeStorage(nc, nr, asset) }, 8);
+                            if (nr.BaseStream.Position != container.Length) throw new FormatException($"Node container read {nr.BaseStream.Position} of {container.Length} bytes");
+                        }
+                        else d["CachedNodeContainer"] = null;
+                        d["CachedPipelines"] = c.Array(() => new object[] { c.Str(), c.Str() }, 8);
+                    }
                     break;
                 case "UInterchangeBaseNode": d["Attributes"] = ReadAttributeStorage(c, r, asset); break;
                 case "UBaseMediaSource": ReadBaseMediaSource(d, c, r, asset); break;
@@ -275,15 +289,27 @@ internal static class ClassSerializers
                     break;
                 case "UDynamicMesh":
                     // UDynamicMesh.cpp: the FDynamicMesh3, geometry and the export's last field
-                    d["Mesh"] = Rest();
+                    d["Mesh"] = DynamicMeshSerializer.Read(c, r, asset);
                     break;
                 case "UMeshPartitionCollisionComponent":
                 {
                     // MeshPartitionCollisionComponent.cpp: with editor data, whether collision data follows, whether it has a mesh,
-                    // and the mesh, geometry and the export's last field
+                    // and the mesh as PhysicsCore.cpp writes an FTriMeshCollisionData: vertices, triangle indices, material indices,
+                    // UV channels, the vertices again, its flags, and from OptionalQuantizePerFaceBoundsInChaosTriMeshBVH one more
                     bool has = c.Bool();
                     d["bHasCollisionData"] = has;
-                    if (has) { bool mesh = c.Bool(); d["bHasMesh"] = mesh; if (mesh) d["Mesh"] = Rest(); }
+                    if (has && c.Bool())
+                    {
+                        float[] Vertices() { int n = c.Count(12); return c.Floats(n * 3); }
+                        var mesh = new Dictionary<string, object> { ["Vertices"] = Vertices() };
+                        { int n = c.Count(12); var t = new int[n * 3]; for (int i = 0; i < t.Length; i++) t[i] = r.ReadInt32(); mesh["Indices"] = t; }
+                        { int n = c.Count(2); var m = new ushort[n]; for (int i = 0; i < n; i++) m[i] = r.ReadUInt16(); mesh["MaterialIndices"] = m; }
+                        mesh["UVs"] = c.Array(() => { int n = c.Count(c.Lwc ? 16 : 8); return c.Doubles(n * 2, c.Lwc); }, 4);
+                        mesh["VerticesAgain"] = Vertices();
+                        mesh["bFlipNormals"] = c.Bool(); mesh["bDeformableMesh"] = c.Bool(); mesh["bFastCook"] = c.Bool(); mesh["bDisableActiveEdgePrecompute"] = c.Bool();
+                        if (Ver(FortniteMainGuid) >= 235) mesh["bReducedMemoryRepresentation"] = c.Bool();
+                        d["Mesh"] = mesh;
+                    }
                     break;
                 }
                 case "UGroomAsset": ReadGroomAsset(d, c, r, asset, export, Rest); break;
@@ -598,8 +624,9 @@ internal static class ClassSerializers
         m["bGuidIsHash"] = c.Bool();
         if (!editorStripped)
         {
+            // FReductionBaseSkeletalMeshBulkData::Serialize: per LOD, the reduction source model in byte bulk data
             if (fortnite >= (int)FFortniteMainBranchObjectVersion.AllowSkeletalMeshToReduceTheBaseLOD && asset.GetCustomVersion(UE5MainGuid) < InlineReductionCacheData)
-                throw new FormatException("FReductionBaseSkeletalMeshBulkData saved before ConvertReductionBaseSkeletalMeshBulkDataToInlineReductionCacheData");
+                m["OriginalReductionSourceMeshData"] = c.Array<object>(() => ReductionSource(c.ByteBulk(), asset), 20);
             if (asset.GetCustomVersion(UE5MainGuid) >= InlineReductionCacheData)
                 m["InlineReductionCacheDatas"] = c.Array(() => new object[] { r.ReadUInt32(), r.ReadUInt32() }, 8);
         }
@@ -609,6 +636,22 @@ internal static class ClassSerializers
     /// <summary>SkeletalMeshLODModel.cpp FSkeletalMeshLODModel::Serialize for packages from SplitModelAndRenderData: strip flags,
     /// sections, section user data, the index buffer, active bones, imported mesh infos, the legacy size, vertex count, required
     /// bones, raw point indices, the raw source data ID, the import vertex map, texture coordinate count and skin weight profiles.</summary>
+    // SkeletalMeshLODImporterData.cpp operator<<(FReductionSkeletalMeshData): written by FBulkDataWriter with the package's
+    // versions, it holds its own version pair, the base LOD model and, unless the archive already ends, the morph deltas by name
+    static Dictionary<string, object> ReductionSource(Dictionary<string, object> bulk, UAsset asset)
+    {
+        if (bulk["Payload"] is not byte[] bytes) return bulk;
+        using var r = new AssetBinaryReader(new MemoryStream(bytes), asset);
+        var c = new Cursor(r);
+        var d = new Dictionary<string, object> { ["Version"] = r.ReadInt32(), ["LicenseeVersion"] = r.ReadInt32(),
+            ["BaseLODModel"] = ReadSkeletalMeshLODModel(c, r, asset) };
+        if (r.BaseStream.Position < bytes.Length)
+            d["BaseLODMorphTargetData"] = c.Array(() => new object[] { c.Str(), c.Array(() => new object[] { c.Floats(3), c.Floats(3), r.ReadUInt32() }, 28) }, 8);
+        if (r.BaseStream.Position != bytes.Length) throw new FormatException($"Reduction source read {r.BaseStream.Position} of {bytes.Length} bytes");
+        bulk["Payload"] = d;
+        return bulk;
+    }
+
     static Dictionary<string, object> ReadSkeletalMeshLODModel(Cursor c, AssetBinaryReader r, UAsset asset)
     {
         var m = new Dictionary<string, object>();
@@ -877,15 +920,142 @@ internal static class ClassSerializers
     /// ratio, the allocation table (each key's offsets and sizes, a single pair before MultipleAllocationsPerAttributeInStorageFixed,
     /// type, property and hash) and the storage.
     /// </summary>
+    /// <summary>
+    /// Interchange AttributeStorage.h FAttributeStorage: the fragmented memory cost, defrag ratio, the allocation table (each
+    /// key with its allocations' offsets and sizes, one of each before MultipleAllocationsPerAttributeInStorageFixed, its type,
+    /// property flags and hash) and the storage buffer. Each value sits in the buffer as the saving editor held it in memory:
+    /// an FString as NUL-terminated UTF-16, an FName or soft object path as its string, a string array as one allocation per
+    /// element, an FInterchangeLODMeshData as its mesh UID, scene node name, transform and geometric transform, any other type
+    /// as its bytes; freed allocations stay in the buffer as fragmented memory.
+    /// </summary>
     static object ReadAttributeStorage(Cursor c, AssetBinaryReader r, UAsset asset)
     {
         bool multiple = asset.GetCustomVersion(InterchangeGuid) >= 3;
-        return new object[] { r.ReadUInt64(), r.ReadSingle(),
-            c.Array(() => new object[] { c.Str(),
-                multiple ? c.Array(() => r.ReadUInt64(), 8) : new List<ulong> { r.ReadUInt64() },
-                multiple ? c.Array(() => r.ReadUInt64(), 8) : new List<ulong> { r.ReadUInt64() },
-                r.ReadInt32(), r.ReadUInt32(), r.ReadGuid() }, 36),
-            c.Bytes64() };
+        var d = new Dictionary<string, object> { ["FragmentedMemoryCost"] = r.ReadUInt64(), ["DefragRatio"] = r.ReadSingle() };
+        var table = c.Array(() => (Key: c.Str(),
+            Offsets: multiple ? c.Array(() => r.ReadUInt64(), 8) : new List<ulong> { r.ReadUInt64() },
+            Sizes: multiple ? c.Array(() => r.ReadUInt64(), 8) : new List<ulong> { r.ReadUInt64() },
+            Type: r.ReadInt32(), Property: r.ReadUInt32(), Hash: r.ReadGuid()), 36);
+        byte[] storage = c.Bytes64();
+        d["Attributes"] = table.Select(e => new Dictionary<string, object> { ["Key"] = e.Key, ["Type"] = AttributeTypeName(e.Type),
+            ["Property"] = e.Property, ["Hash"] = e.Hash, ["Value"] = AttributeValue(e.Type, e.Offsets, e.Sizes, storage) }).ToList();
+        d["StorageSize"] = storage.LongLength;
+        return d;
+    }
+
+    // AttributeStorage.h EAttributeTypes, single then array, with each value's in-memory element layout (b uint8, c int8, h int16,
+    // H uint16, i int32, I uint32, q int64, Q uint64, e half, f float, d double, g FGuid) and size including padding
+    static readonly Dictionary<int, (string Name, string Layout, int Size)> AttributeTypes = new()
+    {
+        [1] = ("Bool", "b", 1), [4] = ("Color", "bbbb", 4), [5] = ("DateTime", "q", 8), [6] = ("Double", "d", 8), [8] = ("Float", "f", 4),
+        [9] = ("Guid", "g", 16), [10] = ("Int8", "c", 1), [11] = ("Int16", "h", 2), [12] = ("Int32", "i", 4), [13] = ("Int64", "q", 8),
+        [14] = ("IntRect", "iiii", 16), [15] = ("LinearColor", "ffff", 16), [17] = ("RandomStream", "ii", 8), [19] = ("Timespan", "q", 8),
+        [20] = ("TwoVectors", "dddddd", 48), [21] = ("UInt8", "b", 1), [22] = ("UInt16", "H", 2), [23] = ("UInt32", "I", 4), [24] = ("UInt64", "Q", 8),
+        [25] = ("Vector2d", "dd", 16), [26] = ("IntPoint", "ii", 8), [27] = ("IntVector", "iii", 12), [28] = ("Vector2DHalf", "ee", 4),
+        [29] = ("Float16", "e", 2), [30] = ("OrientedBox", "ddddddddddddddd", 120), [31] = ("FrameNumber", "i", 4), [32] = ("FrameRate", "ii", 8),
+        [33] = ("FrameTime", "if", 8), [35] = ("Matrix44f", "ffffffffffffffff", 64), [36] = ("Matrix44d", "dddddddddddddddd", 128),
+        [37] = ("Plane4f", "ffff", 16), [38] = ("Plane4d", "dddd", 32), [39] = ("Quat4f", "ffff", 16), [40] = ("Quat4d", "dddd", 32),
+        [41] = ("Rotator3f", "fff", 12), [42] = ("Rotator3d", "ddd", 24), [45] = ("Vector3f", "fff", 12), [46] = ("Vector3d", "ddd", 24),
+        [47] = ("Vector2f", "ff", 8), [48] = ("Vector4f", "ffff", 16), [49] = ("Vector4d", "dddd", 32), [50] = ("Box2f", "ffffb", 20),
+        [51] = ("Box2D", "ddddb", 40), [52] = ("Box3f", "ffffffb", 28), [53] = ("Box3d", "ddddddb", 56), [54] = ("BoxSphereBounds3f", "fffffff", 28),
+        [55] = ("BoxSphereBounds3d", "ddddddd", 56), [56] = ("Sphere3f", "ffff", 16), [57] = ("Sphere3d", "dddd", 32),
+    };
+    static readonly Dictionary<int, int> AttributeArrayElement = new()
+    {
+        [58] = 1, [59] = 4, [60] = 5, [61] = 6, [63] = 8, [64] = 9, [65] = 10, [66] = 11, [67] = 12, [68] = 13, [69] = 14, [70] = 15, [72] = 17,
+        [74] = 19, [75] = 20, [76] = 22, [77] = 23, [78] = 24, [79] = 25, [80] = 26, [81] = 27, [82] = 28, [83] = 29, [84] = 30, [85] = 31,
+        [86] = 32, [87] = 33, [89] = 35, [90] = 36, [91] = 37, [92] = 38, [93] = 39, [94] = 40, [95] = 41, [96] = 42, [99] = 45, [100] = 46,
+        [101] = 47, [102] = 48, [103] = 49, [104] = 50, [105] = 51, [106] = 52, [107] = 53, [108] = 54, [109] = 55, [110] = 56, [111] = 57,
+    };
+    static readonly Dictionary<int, string> AttributeSpecial = new()
+    {
+        [0] = "None", [2] = "ByteArray", [3] = "ByteArray64", [7] = "Enum", [16] = "Name", [18] = "String", [34] = "SoftObjectPath",
+        [43] = "Transform3f", [44] = "Transform3d", [62] = "EnumArray", [71] = "NameArray", [73] = "StringArray", [88] = "SoftObjectPathArray",
+        [97] = "Transform3fArray", [98] = "Transform3dArray", [112] = "InterchangeLODMeshData", [113] = "InterchangeLODMeshDataArray",
+    };
+    static string AttributeTypeName(int type) => AttributeTypes.TryGetValue(type, out var t) ? t.Name
+        : AttributeArrayElement.TryGetValue(type, out int e) ? AttributeTypes[e].Name + "Array"
+        : AttributeSpecial.TryGetValue(type, out var n) ? n : throw new FormatException($"Invalid attribute type {type}");
+
+    static object AttributeValue(int type, List<ulong> offsets, List<ulong> sizes, byte[] storage)
+    {
+        if (offsets.Count != sizes.Count) throw new FormatException("Attribute offsets and sizes differ in count");
+        ReadOnlySpan<byte> At(int i)
+        {
+            if (offsets[i] > (ulong)storage.LongLength || sizes[i] > (ulong)storage.LongLength - offsets[i]) throw new FormatException("Attribute allocation outside the storage");
+            return storage.AsSpan((int)offsets[i], (int)sizes[i]);
+        }
+        string Text(int i)
+        {
+            var b = At(i);
+            if (b.Length % 2 != 0 || b.Length < 2 || b[^1] != 0 || b[^2] != 0) throw new FormatException("Attribute string is not NUL-terminated UTF-16");
+            return System.Text.Encoding.Unicode.GetString(b[..^2]);
+        }
+        object Elements(ReadOnlySpan<byte> b, string layout, int size, bool single)
+        {
+            if (b.Length % size != 0 || (single && b.Length != size)) throw new FormatException($"Attribute of {b.Length} bytes is not made of {size}-byte values");
+            var values = new List<object>(b.Length / size);
+            for (int at = 0; at < b.Length; at += size)
+            {
+                var v = new object[layout.Length];
+                int p = at;
+                for (int k = 0; k < layout.Length; k++)
+                {
+                    char ch = layout[k];
+                    // members are aligned to their own size, as the compiler lays them out
+                    int w = ch switch { 'b' or 'c' => 1, 'h' or 'H' or 'e' => 2, 'i' or 'I' or 'f' => 4, 'g' => 16, _ => 8 };
+                    int align = ch == 'g' ? 4 : w;
+                    p = at + ((p - at + align - 1) / align) * align;
+                    v[k] = ch switch
+                    {
+                        'b' => b[p], 'c' => (sbyte)b[p], 'h' => BitConverter.ToInt16(b[p..]), 'H' => BitConverter.ToUInt16(b[p..]),
+                        'e' => (float)BitConverter.ToHalf(b[p..]), 'i' => BitConverter.ToInt32(b[p..]), 'I' => BitConverter.ToUInt32(b[p..]),
+                        'f' => BitConverter.ToSingle(b[p..]), 'g' => new Guid(b.Slice(p, 16)), 'q' => BitConverter.ToInt64(b[p..]),
+                        'Q' => BitConverter.ToUInt64(b[p..]), _ => BitConverter.ToDouble(b[p..]),
+                    };
+                    p += w;
+                }
+                if (p - at > size) throw new FormatException($"Attribute layout {layout} exceeds {size} bytes");
+                values.Add(layout.Length == 1 ? v[0] : v);
+            }
+            return single ? values[0] : values;
+        }
+        // FTransform: rotation, translation and scale, each a four-lane vector register when vectorized, otherwise three lanes
+        object Transforms(ReadOnlySpan<byte> b, bool wide, bool single)
+        {
+            int lane = wide ? 8 : 4;
+            string layout = new string(wide ? 'd' : 'f', b.Length % (12 * lane) == 0 ? 12 : 10);
+            return Elements(b, layout, layout.Length * lane, single);
+        }
+        if (AttributeTypes.TryGetValue(type, out var t)) return Elements(At(0), t.Layout, t.Size, true);
+        if (AttributeArrayElement.TryGetValue(type, out int e)) { var et = AttributeTypes[e]; return Elements(At(0), et.Layout, et.Size, false); }
+        switch (type)
+        {
+            case 0: return null;
+            case 2: case 3: return new Payload("byte array attribute", At(0).ToArray());
+            case 7:
+            {
+                // an enum is stored as its underlying integer
+                var b = At(0);
+                return b.Length switch { 1 => b[0], 2 => BitConverter.ToUInt16(b), 4 => BitConverter.ToUInt32(b), 8 => (object)BitConverter.ToUInt64(b),
+                    _ => throw new FormatException($"Enum attribute of {b.Length} bytes") };
+            }
+            case 62: return new Payload("enum array attribute (element width set by its enum type)", At(0).ToArray());
+            case 16: case 18: case 34: return Text(0);
+            case 71: case 73: case 88: return Enumerable.Range(0, offsets.Count).Select(Text).ToList();
+            case 43: case 97: return Transforms(At(0), false, type == 43);
+            case 44: case 98: return Transforms(At(0), true, type == 44);
+            case 112: case 113:
+            {
+                if (offsets.Count % 4 != 0) throw new FormatException("LOD mesh data without four allocations per entry");
+                var list = new List<object>();
+                for (int i = 0; i < offsets.Count; i += 4)
+                    list.Add(new Dictionary<string, object> { ["MeshUid"] = Text(i), ["SceneNodeName"] = Text(i + 1),
+                        ["Transform"] = Transforms(At(i + 2), true, true), ["GeometricTransform"] = Transforms(At(i + 3), true, true) });
+                return type == 112 ? list.Single() : list;
+            }
+            default: throw new FormatException($"Invalid attribute type {type}");
+        }
     }
 
     /// <summary>
@@ -1259,6 +1429,56 @@ internal static class ClassSerializers
         public object Optional(Func<object> read) => Bool() ? read() : null;
         public object Optional(Func<string> read) => Bool() ? read() : null;
         public byte[] Bytes() { int n = Count(1); return r.ReadBytes(n); }
+        /// <summary>
+        /// Archive.cpp FArchive::SerializeCompressedNew: the package file tag (with the chunk size; a v2 tag adds the compressor,
+        /// CompressionUtil.cpp SerializeCompressorName), the total compressed and uncompressed sizes, each chunk's sizes, then
+        /// each chunk compressed. A v1 header names no compressor, so the caller's format for old files applies.
+        /// </summary>
+        public byte[] CompressedNew(long length, string v1Format)
+        {
+            const long Tag = 0x9E2A83C1, V2Tag = Tag | (0x22222222L << 32);
+            long tag = r.ReadInt64(), chunkSize = r.ReadInt64();
+            string format = v1Format;
+            if (tag == V2Tag)
+            {
+                byte k = r.ReadByte();
+                format = k switch { 0 => r.ReadFString()?.Value, 1 => "None", 2 => "Oodle", 3 => "Zlib", 4 => "Gzip", 5 => "LZ4", _ => throw new FormatException($"Invalid compressor {k}") };
+            }
+            else if (tag != Tag) throw new FormatException($"Invalid compressed archive tag {tag:X} at {r.BaseStream.Position - 16}");
+            long compressed = r.ReadInt64(), uncompressed = r.ReadInt64();
+            if (uncompressed != length) throw new FormatException($"Compressed archive holds {uncompressed} bytes, not {length}");
+            if (chunkSize == Tag) chunkSize = 131072;
+            if (chunkSize <= 0 || chunkSize >= int.MaxValue) throw new FormatException($"Invalid compression chunk size {chunkSize}");
+            long chunks = (uncompressed + chunkSize - 1) / chunkSize;
+            var sizes = new (long Compressed, long Uncompressed)[chunks];
+            for (long i = 0; i < chunks; i++) sizes[i] = (r.ReadInt64(), r.ReadInt64());
+            if (sizes.Sum(x => x.Compressed) != compressed || sizes.Sum(x => x.Uncompressed) != uncompressed) throw new FormatException("Compressed chunk sizes disagree with the totals");
+            var output = new byte[uncompressed];
+            long at = 0;
+            foreach (var (cs, us) in sizes)
+            {
+                if (cs < 0 || cs > r.BaseStream.Length - r.BaseStream.Position) throw new FormatException($"Compressed chunk of {cs} bytes overruns the data");
+                byte[] chunk = r.ReadBytes((int)cs), plain;
+                switch (format)
+                {
+                    case "None": plain = chunk; break;
+                    case "Oodle": plain = Oodle.Decompress(chunk, (int)us); break;
+                    case "Zlib": case "Gzip":
+                    {
+                        plain = new byte[us];
+                        using Stream z = format == "Zlib" ? new System.IO.Compression.ZLibStream(new MemoryStream(chunk), System.IO.Compression.CompressionMode.Decompress)
+                            : new System.IO.Compression.GZipStream(new MemoryStream(chunk), System.IO.Compression.CompressionMode.Decompress);
+                        z.ReadExactly(plain);
+                        break;
+                    }
+                    default: throw new FormatException($"Unsupported compression format {format}");
+                }
+                if (plain.Length != us) throw new FormatException($"Chunk decompressed to {plain.Length} of {us} bytes");
+                System.Array.Copy(plain, 0, output, at, us);
+                at += us;
+            }
+            return output;
+        }
         public byte[] Bytes64()
         {
             long n = r.ReadInt64();
@@ -1505,7 +1725,8 @@ internal static class ClassSerializers
         a["AttributeId"] = r.ReadInt32();
         if (fortnite < ConvertFPCGMetadataAttributeToGenericAttributes)
         {
-            a["Values"] = c.Array(() => PCGValue(c, r, type, typeObject, true), 1);
+            // TArray<bool> is one of TArray's one-byte element types, serialized as raw bytes; a lone bool is four bytes
+            a["Values"] = PCGMetadataTypes[type] == "Boolean" ? c.Array(() => (object)(r.ReadByte() != 0), 1) : c.Array(() => PCGValue(c, r, type, typeObject, true), 1);
             a["DefaultValue"] = PCGValue(c, r, type, typeObject, true);
             return;
         }

@@ -59,8 +59,8 @@ public class RigVMData
     /// <summary>A VM saved before FRigVMObjectVersion with class-based storage: URigVM::Load reads it and then discards the VM, which
     /// the owning rig recompiles, so the bytes after the storage flag never reach the running VM.</summary>
     [JsonProperty] public bool LegacyDiscardedOnLoad;
-    /// <summary>The localized registry's bytes: URigVM::Load seeks past them unless a.RigVM.EnableLocalizedRegistry is set.</summary>
-    [JsonProperty] public byte[] LocalizedRegistryBytes;
+    /// <summary>The localized registry, which URigVM::Load seeks past unless a.RigVM.EnableLocalizedRegistry is set.</summary>
+    [JsonProperty] public Dictionary<string, object> LocalizedRegistryData;
     /// <summary>Parses a serialized VM, given its bytes and their offset in the package file; throws unless it reads every byte.</summary>
     public static RigVMData Parse(UAsset asset, byte[] data, long fileOffset) => Parse(asset, data, fileOffset, true, out _);
 
@@ -135,10 +135,30 @@ public class RigVMData
                 // the relative form counts from before the offset; the older absolute form is a package file offset
                 long target = vm >= LocalizedRegistryWithRelativeSeekOffset ? before + offset : offset - SerialOffset;
                 if (target < r.BaseStream.Position || target > r.BaseStream.Length) throw new FormatException($"Invalid localized registry end {target}");
-                LocalizedRegistryBytes = r.ReadBytes(checked((int)(target - r.BaseStream.Position)));
+                LocalizedRegistryData = ReadLocalizedRegistry(r, c);
+                if (r.BaseStream.Position != target) throw new FormatException($"Localized registry ends at {r.BaseStream.Position}, not {target}");
             }
         }
         End(r);
+    }
+
+    /// <summary>RigVMRegistry.cpp FRigVMRegistry_NoLock::Serialize_NoLock: the allowed classes; the types, each a C++ type name and
+    /// type object; the dispatch factories, each its struct and flattened arguments (name, direction and the types of every
+    /// permutation used); and the functions (RigVMFunction.cpp), each its name, struct, factory struct and arguments (name, type
+    /// and direction).</summary>
+    static Dictionary<string, object> ReadLocalizedRegistry(AssetBinaryReader r, Cursor c)
+    {
+        object Object() => new FPackageIndex(r);
+        object Type() => new object[] { c.Name(), Object() };
+        return new Dictionary<string, object>
+        {
+            ["AllowedClasses"] = c.Array(Object, 4),
+            ["Types"] = c.Array(Type, 12),
+            ["Factories"] = c.Array(() => new Dictionary<string, object> { ["Struct"] = Object(),
+                ["Arguments"] = c.Array(() => new object[] { c.Name(), r.ReadInt32(), c.Array(Type, 12) }, 16) }, 8),
+            ["Functions"] = c.Array(() => new Dictionary<string, object> { ["Name"] = c.Str(), ["Struct"] = Object(), ["Factory"] = Object(),
+                ["Arguments"] = c.Array(() => new object[] { c.Str(), c.Str(), r.ReadInt32() }, 12) }, 16),
+        };
     }
 
     static (int vm, int ue5, int anim, int fortnite, int release) Versions(UAsset asset) =>
@@ -248,8 +268,10 @@ public class RigVMData
         f["SerializedCollapsedNode"] = c.Str();
         if (vm < RigVMSaveSerializedGraphInGraphFunctionDataAsByteArray) return f;
         // FRigVMObjectArchive: versions, buffer, uncompressed size, compressed size, compressed
-        f["CollapseNodeArchive"] = new object[] { vm >= ObjectArchiveVersionContainerSerialization ? c.Map(c.Guid, () => r.ReadInt32(), 20) : null,
-            r.ReadBytes(c.Count(1)), r.ReadInt32(), r.ReadInt32(), c.Bool() };
+        var versions = vm >= ObjectArchiveVersionContainerSerialization ? c.Map(c.Guid, () => r.ReadInt32(), 20) : null;
+        byte[] buffer = r.ReadBytes(c.Count(1));
+        int uncompressed = r.ReadInt32(), compressed = r.ReadInt32();
+        f["CollapseNodeArchive"] = RigVMObjectArchiveReader.Decode((UAsset)r.Asset, versions, buffer, uncompressed, compressed, c.Bool());
         return f;
     }
 
@@ -294,9 +316,10 @@ public class RigVMData
         }, 15);
         d["ScriptStructPaths"] = c.Array(c.Str, 4);
         d["TotalBytes"] = r.ReadUInt64();
-        object View(byte type) => type switch
+        // a Plain register's elements are copied as bytes; only the bytecode that uses the register gives them a type
+        object View(byte type, ushort size) => type switch
         {
-            0 => r.ReadBytes(c.Count(1)),
+            0 => new Payload($"plain register elements of {size} bytes", r.ReadBytes(c.Count(1))),
             1 => c.Array(c.Str, 4),
             2 => c.Array(c.Name, 8),
             3 => c.Array(c.Str, 4),
@@ -308,8 +331,9 @@ public class RigVMData
             byte type = (byte)reg["Type"];
             bool dynamic = (bool)reg["IsDynamic"], nested = dynamic && (bool)reg["IsArray"];
             if ((ushort)reg["ElementCount"] == 0 && !dynamic) { values.Add(null); continue; }
-            if (!nested) values.Add(View(type));
-            else { var slices = new List<object>(); for (int i = 0; i < (ushort)reg["SliceCount"]; i++) slices.Add(View(type)); values.Add(slices); }
+            ushort size = (ushort)reg["ElementSize"];
+            if (!nested) values.Add(View(type, size));
+            else { var slices = new List<object>(); for (int i = 0; i < (ushort)reg["SliceCount"]; i++) slices.Add(View(type, size)); values.Add(slices); }
         }
         d["Values"] = values;
         return d;
