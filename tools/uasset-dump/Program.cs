@@ -315,5 +315,10 @@ static void Blobs(object v, string cls, string name, string at, string path, Tex
     if (type.Namespace == null || !type.Namespace.StartsWith("UAssetAPI")) return;
     if (v is UAssetAPI.PropertyTypes.Objects.PropertyData) return; // tagged data is --audit's Walk
     foreach (var f in type.GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance))
-        if (!f.IsDefined(typeof(UAssetAPI.JSON.WriteBackCopyAttribute), true)) Blobs(f.GetValue(v), cls, name, $"{at}.{f.Name}", path, w, depth + 1);
+        if (f.IsDefined(typeof(UAssetAPI.JSON.WriteBackCopyAttribute), true)) continue;
+        else if (f.GetCustomAttributes(typeof(UAssetAPI.JSON.PayloadFormatAttribute), true).FirstOrDefault() is UAssetAPI.JSON.PayloadFormatAttribute fmt)
+        {
+            if (f.GetValue(v) is byte[] pb && pb.Length > 0) w.WriteLine($"payload\t{cls}:{fmt.Format}\t{pb.Length}\t{name}{at}.{f.Name}\t{path}");
+        }
+        else Blobs(f.GetValue(v), cls, name, $"{at}.{f.Name}", path, w, depth + 1);
 }
