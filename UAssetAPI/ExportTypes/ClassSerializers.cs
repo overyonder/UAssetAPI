@@ -176,11 +176,10 @@ internal static class ClassSerializers
                     bool has = c.Bool();
                     d["bHasData"] = has;
                     if (!has) break;
-                    d["DatabaseSize"] = r.ReadInt64();
-                    var rest = Rest();
-                    if (rest.Length < 20) throw new FormatException("Point cloud database without its digest");
-                    d["CompressedDatabase"] = rest[..^20];
-                    d["WholeDbHash"] = rest[^20..];
+                    long size = r.ReadInt64();
+                    d["DatabaseSize"] = size;
+                    d["Database"] = new Payload("SQLite database", c.CompressedNew(size, "Zlib"));
+                    d["WholeDbHash"] = Convert.ToHexString(r.ReadBytes(20));
                     break;
                 }
                 case "UMetaHumanCharacter":
@@ -447,10 +446,7 @@ internal static class ClassSerializers
                     d["Nodes"] = c.Array(() => r.ReadUInt16(), 2);
                     break;
                 case "UMapBuildDataRegistry":
-                    // MapBuildData.cpp: strip flags, then the baked lighting, reflection capture and sky build data, the rest of
-                    // the export
-                    c.StripFlags(d);
-                    d["BuildData"] = Rest();
+                    if ((c.StripFlags(d)[0] & 2) == 0) ReadMapBuildData(d, c, r, asset);
                     break;
                 case "ULandscapeComponent": ReadLandscapeComponent(d, c, r, asset, export); break;
                 case "ULandscapeHeightfieldCollisionComponent":
@@ -1159,16 +1155,143 @@ internal static class ClassSerializers
     /// GeometryCollectionInDDC), the collection (from GeometryCollectionInDDCAndAsset, geometry through a Chaos archive) and,
     /// from GeometryCollectionNaniteTransient, the render data's cooked flag, which an editor save writes false.
     /// </summary>
+    /// <summary>
+    /// MapBuildData.cpp UMapBuildDataRegistry::Serialize, after its strip flags unless audio-visual data is stripped: the mesh
+    /// build data, precomputed light volumes, volumetric lightmaps (from VolumetricLightmaps), light build data, reflection
+    /// captures (from MoveReflectionCaptureDataToMapBuildData), sky atmosphere entries (from SkyAtmosphereStaticLightingVersioning,
+    /// which store nothing) and the volumetric lightmap grid (from VolumetricLightMapGridDescSupport), each map keyed by GUID.
+    /// </summary>
+    static void ReadMapBuildData(Dictionary<string, object> d, Cursor c, AssetBinaryReader r, UAsset asset)
+    {
+        int rendering = asset.GetCustomVersion(RenderingGuid), mobile = asset.GetCustomVersion(MobileGuid), release = asset.GetCustomVersion(UE5ReleaseGuid);
+        int main = asset.GetCustomVersion(UE5MainGuid);
+        var ue = asset.ObjectVersion;
+        object Object() => new FPackageIndex(r);
+        List<Guid> Guids() => c.Array(r.ReadGuid, 16);
+        List<object[]> Map(Func<object> value, int minBytes) => c.Array(() => new object[] { r.ReadGuid(), value() }, 16 + minBytes);
+        // LightMap.cpp FLightMap2D::Serialize, and the legacy 1D light map read only to be discarded
+        object LightMap()
+        {
+            uint type = r.ReadUInt32();
+            if (type == 0) return null;
+            var m = new Dictionary<string, object> { ["Type"] = type, ["LightGuids"] = Guids() };
+            if (type == 1)
+            {
+                m["Owner"] = Object();
+                m["DirectionalSamples"] = c.ByteBulk("quantized directional light samples");
+                m["Dummy"] = c.Fixed(5, c.Vector);
+                m["SimpleSamples"] = c.ByteBulk("quantized simple light samples");
+                return m;
+            }
+            if (type != 2) throw new FormatException($"Invalid light map type {type}");
+            if (ue < ObjectVersion.VER_UE4_COMBINED_LIGHTMAP_TEXTURES)
+                m["LegacyCoefficients"] = c.Fixed(ue < ObjectVersion.VER_UE4_LOW_QUALITY_DIRECTIONAL_LIGHTMAPS ? 3 : 4, () => new object[] { Object(), c.Vector4(), c.Vector4() });
+            else
+            {
+                m["Textures"] = new[] { Object(), Object() };
+                if (ue >= ObjectVersion.VER_UE4_SKY_LIGHT_COMPONENT)
+                {
+                    m["SkyOcclusionTexture"] = Object();
+                    if (ue >= ObjectVersion.VER_UE4_AO_MATERIAL_MASK) m["AOMaterialMaskTexture"] = Object();
+                }
+                m["ScaleAddVectors"] = c.Fixed(4, () => new[] { c.Floats(4), c.Floats(4) });
+            }
+            m["CoordinateScale"] = c.Doubles(2, c.Lwc); m["CoordinateBias"] = c.Doubles(2, c.Lwc);
+            if (rendering >= 29) { m["bShadowChannelValid"] = c.Fixed(4, c.Bool); m["InvUniformPenumbraSize"] = c.Floats(4); }
+            if (rendering >= 27) m["VirtualTextures"] = rendering >= 45 ? new[] { Object(), Object() } : new[] { Object() };
+            return m;
+        }
+        // ShadowMap.cpp FShadowMap2D::Serialize
+        object ShadowMap()
+        {
+            uint type = r.ReadUInt32();
+            if (type == 0) return null;
+            if (type != 2) throw new FormatException($"Invalid shadow map type {type}");
+            var m = new Dictionary<string, object> { ["LightGuids"] = Guids(), ["Texture"] = Object(),
+                ["CoordinateScale"] = c.Doubles(2, c.Lwc), ["CoordinateBias"] = c.Doubles(2, c.Lwc), ["bChannelValid"] = c.Fixed(4, c.Bool) };
+            if (ue >= ObjectVersion.VER_UE4_STATIC_SHADOWMAP_PENUMBRA_SIZE) m["InvUniformPenumbraSize"] = c.Floats(4);
+            return m;
+        }
+        d["MeshBuildData"] = Map(() =>
+        {
+            var m = new Dictionary<string, object> { ["LightMap"] = LightMap(), ["ShadowMap"] = ShadowMap(), ["IrrelevantLights"] = Guids() };
+            // TArray::BulkSerialize: the element size, then the FPerInstanceLightmapData (light map and shadow map UV biases)
+            int size = r.ReadInt32();
+            if (size != 16) throw new FormatException($"Per-instance lightmap data element of {size} bytes");
+            int n = c.Count(16);
+            m["PerInstanceLightmapData"] = c.Floats(n * 4);
+            return m;
+        }, 12);
+        // PrecomputedLightVolume.cpp: whether valid and initialized, the bounds, sample spacing, SH sample count (from
+        // IndirectLightingCache3BandSupport) and the high and low quality samples (low from VOLUME_SAMPLE_LOW_QUALITY_SUPPORT); a
+        // sample is its position, radius, RGB SH lighting, packed sky bent normal and directional light shadowing
+        d["LevelPrecomputedLightVolumeBuildData"] = Map(() =>
+        {
+            if (!c.Bool() || !c.Bool()) return null;
+            var v = new Dictionary<string, object> { ["Bounds"] = c.Box(), ["SampleSpacing"] = r.ReadSingle() };
+            int sh = rendering >= 1 ? r.ReadInt32() : 4;
+            if (sh != 9 && sh != 4) throw new FormatException($"Invalid SH sample count {sh}");
+            v["NumSHSamples"] = sh;
+            object Sample() => new object[] { c.Floats(3), r.ReadSingle(), c.Floats(sh * 3),
+                sh == 9 || ue >= ObjectVersion.VER_UE4_SKY_BENT_NORMAL ? r.ReadUInt32() : null,
+                sh == 9 || ue >= ObjectVersion.VER_UE4_VOLUME_SAMPLE_LOW_QUALITY_SUPPORT ? r.ReadSingle() : null };
+            v["HighQualitySamples"] = c.Array(Sample, 16 + sh * 12);
+            if (ue >= ObjectVersion.VER_UE4_VOLUME_SAMPLE_LOW_QUALITY_SUPPORT) v["LowQualitySamples"] = c.Array(Sample, 16 + sh * 12);
+            return v;
+        }, 4);
+        // PrecomputedVolumetricLightmap.cpp: a layer is its texels and pixel format name
+        object Layer() { var bytes = c.Bytes(); string format = c.Str(); return new Payload($"volumetric lightmap texels ({format})", bytes); }
+        object IntVector() => new[] { r.ReadInt32(), r.ReadInt32(), r.ReadInt32() };
+        object VolumetricLightmap()
+        {
+            if (!c.Bool()) return null;
+            var v = new Dictionary<string, object> { ["Bounds"] = c.Box(), ["IndirectionTextureDimensions"] = IntVector(), ["IndirectionTexture"] = Layer(),
+                ["BrickSize"] = r.ReadInt32(), ["BrickDataDimensions"] = IntVector(), ["AmbientVector"] = Layer(), ["SHCoefficients"] = c.Fixed(6, Layer),
+                ["SkyBentNormal"] = Layer(), ["DirectionalLightShadowing"] = Layer() };
+            if (mobile >= 2 && main < 79) v["LQLayers"] = new[] { Layer(), Layer() };
+            if (rendering >= 34) { v["SubLevelBrickPositions"] = c.Array(IntVector, 12); v["IndirectionTextureOriginalValues"] = c.Array(() => r.ReadUInt32(), 4); }
+            return v;
+        }
+        if (rendering >= 20) d["LevelPrecomputedVolumetricLightmapBuildData"] = Map(VolumetricLightmap, 4);
+        // FStaticShadowDepthMapData: world to light, size and half-float depth samples
+        d["LightBuildData"] = Map(() => new Dictionary<string, object> { ["ShadowMapChannel"] = r.ReadInt32(), ["WorldToLight"] = c.Doubles(16, c.Lwc),
+            ["ShadowMapSizeX"] = r.ReadInt32(), ["ShadowMapSizeY"] = r.ReadInt32(),
+            ["DepthSamples"] = Enumerable.Range(0, c.Count(2)).Select(_ => (float)r.ReadHalf()).ToArray() }, 4 + 16 * 4 + 12);
+        // FReflectionCaptureMapBuildData: cubemap size, average brightness, brightness (StoreReflectionCaptureBrightnessForCooking
+        // to ExcludeBrightnessFromEncodedHDRCubemap), the full HDR capture, then the encoded capture or, between
+        // StoreReflectionCaptureCompressedMobile and StoreReflectionCaptureEncodedHDRDataInRG11B10Format, a texture reference
+        if (asset.GetCustomVersion(ReflectionCaptureGuid) >= 1)
+            d["ReflectionCaptureBuildData"] = Map(() =>
+            {
+                var m = new Dictionary<string, object> { ["CubemapSize"] = r.ReadInt32(), ["AverageBrightness"] = r.ReadSingle() };
+                if (rendering >= 22 && release < 23) m["Brightness"] = r.ReadSingle();
+                m["FullHDRCapturedData"] = new Payload("HDR cubemap texels (FFloat16Color, each mip's six faces)", c.Bytes());
+                if (mobile >= 3 && release < 38) m["EncodedCaptureData"] = Object();
+                else m["EncodedHDRCapturedData"] = new Payload(release >= 38 ? "HDR cubemap texels (FFloat3Packed RG11B10, each mip's six faces)" : "stripped cubemap texels", c.Bytes());
+                return m;
+            }, 12);
+        if (rendering >= 32) d["SkyAtmosphereBuildData"] = Guids();
+        if (asset.GetCustomVersion(FortniteMainGuid) >= 139 && c.Bool())
+        {
+            // VolumetricLightmapGrid.cpp: the tagged FVolumetricLightMapGridDesc, then each cell's bulk data
+            var grid = c.Tagged("VolumetricLightMapGridDesc");
+            d["VolumetricLightMapGridDesc"] = grid;
+            int cells = grid.Value.FirstOrDefault(p => p.Name.ToString() == "Cells") is ArrayPropertyData a ? a.Value.Length : 0;
+            d["VolumetricLightMapGridCellBulkData"] = c.Fixed(cells, () => c.ByteBulk("volumetric lightmap cell (FPrecomputedVolumetricLightmapData)"));
+        }
+    }
+
     static void ReadGeometryCollection(Dictionary<string, object> d, Cursor c, AssetBinaryReader r, UAsset asset, Func<byte[]> rest)
     {
         int destruction = asset.GetCustomVersion(DestructionGuid), main = asset.GetCustomVersion(UE5MainGuid);
         if (destruction < 4) throw new FormatException("Geometry collection saved before GeometryCollectionInDDCAndAsset");
         if (main == 1 || (main >= 11 && main < 14)) throw new FormatException("Geometry collection with legacy Nanite data");
         d["bIsCookedOrCooking"] = c.Bool();
-        var all = rest();
-        if (main < 14) { d["GeometryCollection"] = all; return; }
-        if (all.Length < 4 || BitConverter.ToUInt32(all, all.Length - 4) != 0) throw new FormatException("Geometry collection with cooked render data");
-        d["GeometryCollection"] = all[..^4];
+        // GeometryCollection.cpp FGeometryCollection::Serialize through FTransformCollection: the managed array collection
+        d["GeometryCollection"] = ManagedArrayCollectionSerializer.Read(c, r, asset, new ChaosImplicitSerializer(c, r, asset));
+        if (main < 14) return;
+        // then whether cooked render data follows
+        if (c.Bool()) throw new FormatException("Geometry collection with cooked render data");
         d["bCooked"] = false;
     }
 
@@ -1189,7 +1312,7 @@ internal static class ClassSerializers
         if (version != LegacyReflectionCaptureVer)
         {
             if (end < r.BaseStream.Position || end > r.BaseStream.Length) throw new FormatException($"Invalid reflection capture end {end}");
-            d["SkippedData"] = r.ReadBytes((int)(end - r.BaseStream.Position));
+            d["SkippedData"] = new Payload("reflection capture data of another version, which the engine skips", r.ReadBytes((int)(end - r.BaseStream.Position)));
             return;
         }
         bool valid = c.Bool();
