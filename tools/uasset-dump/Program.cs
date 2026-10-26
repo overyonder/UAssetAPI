@@ -260,7 +260,7 @@ void Audit(UAsset asset, string path, TextWriter o)
         }
         // a class default object loads through UClass::SerializeDefaultObject, which reads only its tagged properties, so
         // bytes after them never reach the engine: "cdotrail" keeps them apart from undecoded data the engine does read
-        if (e.Extras != null && e.Extras.Length > 0) o.WriteLine($"{(e.ObjectFlags.HasFlag(EObjectFlags.RF_ClassDefaultObject) ? "cdotrail" : "extras")}\t{cls}\t{e.Extras.Length}\t{name}{(e.NativeTailFailure == null ? "" : $" [{e.NativeTailFailure}]")}\t{path}");
+        if (e.Extras != null && e.Extras.Length > 0) o.WriteLine($"{(e.ObjectFlags.HasFlag(EObjectFlags.RF_ClassDefaultObject) ? "cdotrail" : "extras")}\t{cls}\t{e.Extras.Length}\t{name}{(e.NativeTailFailure == null ? "" : $" [{e.NativeTailFailure}]")}{(e.Extras.Length <= 16 ? " =" + Convert.ToHexString(e.Extras) : "")}\t{path}");
         if (e is NormalExport n) foreach (var p in n.Data) Walk(p, cls, name, path, o);
         if (e.NativeTails != null) Blobs(e.NativeTails, cls, name, "", path, o, 0);
     }

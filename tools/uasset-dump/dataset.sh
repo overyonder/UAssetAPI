@@ -28,7 +28,9 @@ systemd-run --user --quiet --scope --collect -p MemoryMax=4G -p CPUQuota=200% ni
   if [ -s "$out/batches/retry" ]; then split -l 50 -d -a 3 "$out/batches/retry" "$out/batches/r."; for b in "$out"/batches/r.[0-9][0-9][0-9]; do batch "$b" 0xC0000000; done; fi'
 # a retried package's out-of-memory fail line gives way to its retry's lines
 cat "$out"/batches/r.[0-9]*.out 2>/dev/null > "$out/batches/retried.out"
-awk -F'\t' 'FNR==NR { if ($1=="index") done[$2]=1; next } !($1=="fail" && ($NF in done))' "$out/batches/retried.out" "$out"/batches/b.[0-9]*.out "$out/batches/retried.out" > "$out/batches/all.out"
+awk -F'\t' -v retried="$out/batches/retried.out" 'FILENAME==retried { if ($1=="index") done[$2]=1; next } !($1=="fail" && ($NF in done))' \
+  "$out/batches/retried.out" "$out"/batches/b.[0-9]*.out > "$out/batches/all.out"
+cat "$out/batches/retried.out" >> "$out/batches/all.out"
 grep '^index' "$out/batches/all.out" | cut -f2- > "$out/index.tsv"
 grep -v '^index' "$out/batches/all.out" > "$out/residue.tsv"
 echo "batches $(ls "$out"/batches/*.status | wc -l), nonzero $(grep -L '^0$' "$out"/batches/*.status | wc -l), packages $(wc -l < "$out/index.tsv"), residue lines $(wc -l < "$out/residue.tsv")" | tee "$out/summary"
