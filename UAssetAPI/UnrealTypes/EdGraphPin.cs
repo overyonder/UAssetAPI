@@ -194,8 +194,8 @@ public class FUserPinInfo
             {
                 ContainerType = isArray ? EPinContainerType.Array : EPinContainerType.None,
                 IsReference = reader.ReadBooleanInt(),
-                PinCategory = FName.DefineDummy(reader.Asset, reader.ReadFString()),
-                PinSubCategory = FName.DefineDummy(reader.Asset, reader.ReadFString()),
+                PinCategory = EdGraphPinSerialization.ReadLegacyPinString(reader),
+                PinSubCategory = EdGraphPinSerialization.ReadLegacyPinString(reader),
                 PinSubCategoryObject = EdGraphPinSerialization.ReadObject(reader)
             };
             result.DesiredPinDirection = EEdGraphPinDirection.Max;
@@ -381,7 +381,11 @@ internal static class EdGraphPinSerialization
         asset.GetCustomVersion<FReleaseObjectVersion>() >= FReleaseObjectVersion.PinTypeIncludesUObjectWrapperFlag;
 
     internal static FName ReadPinName(AssetBinaryReader reader) =>
-        PinNamesAreFNames(reader.Asset) ? ReadName(reader) : FName.DefineDummy(reader.Asset, reader.ReadFString());
+        PinNamesAreFNames(reader.Asset) ? ReadName(reader) : ReadLegacyPinString(reader);
+
+    /// <summary>A pre-PinsStoreFName FString held as a dummy FName. A zero-length string stays a null-valued FString,
+    /// which writes back as length 0; a null dummy would instead resolve to name-map entry 0.</summary>
+    internal static FName ReadLegacyPinString(AssetBinaryReader reader) => FName.DefineDummy(reader.Asset, reader.ReadFString() ?? new FString());
 
     internal static void WritePinName(AssetBinaryWriter writer, FName name)
     {
