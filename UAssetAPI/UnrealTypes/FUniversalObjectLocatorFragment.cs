@@ -7,12 +7,25 @@ namespace UAssetAPI.UnrealTypes;
 
 public class UniversalObjectLocatorFragmentPropertyData : StructPropertyData
 {
-    private static Dictionary<string, string> FragmentTypeRegistry = new()
+    /// <summary>
+    /// The fragment types registered with IUniversalObjectLocatorModule::RegisterFragmentType in 5.8.3, by ID, and their
+    /// payload structs, all serialized as tagged properties. UniversalObjectLocatorFragment.cpp reads an unregistered ID's
+    /// payload as FUniversalObjectLocatorEmptyPayload.
+    /// </summary>
+    private static readonly Dictionary<string, string> FragmentTypeRegistry = new()
     {
-        { "actor", "DirectPathObjectLocator" },
+        { "actor", "ActorLocatorFragment" },
+        { "asset", "AssetLocatorFragment" },
         { "animinst", "AnimInstanceLocatorFragment" },
-        { "subobj", "SubObjectLocator" },
         { "ls_lazy_obj_ptr", "LegacyLazyObjectPtrFragment" },
+        { "subobj", "SubObjectLocator" },
+        { "uobj", "DirectPathObjectLocator" },
+        { "animobjfunc", "AnimNextObjectFunctionLocatorFragment" },
+        { "animobjprop", "AnimNextObjectPropertyLocatorFragment" },
+        { "animobjcast", "AnimNextObjectCastLocatorFragment" },
+        { "animcomp", "AnimNextComponentLocatorFragment" },
+        { "animactor", "AnimNextActorLocatorFragment" },
+        { "usdprim", "UsdPrimLocatorFragment" },
     };
 
     public FName FragmentTypeID;
@@ -30,14 +43,8 @@ public class UniversalObjectLocatorFragmentPropertyData : StructPropertyData
         FragmentTypeID = reader.ReadFName();
         if (FragmentTypeID.Value.Value == "None") return;
 
-        if (FragmentTypeRegistry.TryGetValue(FragmentTypeID.Value.Value, out var structType))
-        {
-            StructType = FName.DefineDummy(reader.Asset, structType);
-        }
-        else
-        {
-            throw new FormatException($"Unknown FragmentTypeID : {FragmentTypeID}");
-        }
+        StructType = FName.DefineDummy(reader.Asset, FragmentTypeRegistry.TryGetValue(FragmentTypeID.Value.Value, out var structType)
+            ? structType : "UniversalObjectLocatorEmptyPayload");
 
         base.Read(reader, includeHeader, 1, leng2, PropertySerializationContext.StructFallback);
     }
