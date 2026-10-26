@@ -2,7 +2,7 @@
 # Generates UAssetAPI/ExportTypes/NativeClassTails.g.cs from an Unreal Engine source tree.
 # Usage: tools/generate-native-class-tails.sh <Engine directory> [extra source roots...]
 #
-# Lists every native class descending from AActor, UActorComponent, UBlueprintCore, UNiagaraDataInterfaceTexture, UWorld, UWorldPartition, UMaterialInterface, UMaterialInterfaceEditorOnlyData, UBodySetup, UObjectRedirector, USkyAtmosphereComponent, UPCGComponent, UStaticMesh, UAnimationAsset, UControlRig, URigVMMemoryStorageGeneratorClass, URigVMBlueprintGeneratedClass, UControlRigBlueprintGeneratedClass or UUAFAnimGraph, with its module (the nearest *.Build.cs) and
+# Lists every native class descending from AActor, UActorComponent, UBlueprintCore, UNiagaraDataInterfaceTexture, UWorld, UWorldPartition, UMaterialInterface, UMaterial, UMaterialInterfaceEditorOnlyData, UBodySetup, UObjectRedirector, USkyAtmosphereComponent, UPCGComponent, UStaticMesh, UAnimationAsset, UControlRig, URigVMMemoryStorageGeneratorClass, URigVMBlueprintGeneratedClass, UControlRigBlueprintGeneratedClass UUAFAnimGraph, USoundNode, USoundCue or USoundNodeWavePlayer, with its module (the nearest *.Build.cs) and
 # which of these serializers, each run after the tagged properties and base class first, write persistent data for it:
 #   UActorComponent      Components/ActorComponent.cpp: UCSModifiedProperties
 #   USceneComponent      Components/SceneComponent.cpp: cooked static bounds, when bComputeBoundsOnceForGame
@@ -19,6 +19,10 @@
 #                        FUE5ReleaseStreamObjectVersion::MaterialInterfaceSavedCachedData
 #   UMaterialInstance    MaterialInstance.cpp: the saved-cached-data flag, and the inline shader map count when
 #                        bHasStaticPermutationResource
+#   UMaterial           Materials/Material.cpp: the inline shader map count, the legacy saved-cached-expression-data flag
+#                        between FUE5MainStreamObjectVersion::MaterialSavedCachedData and
+#                        FUE5ReleaseStreamObjectVersion::MaterialInterfaceSavedCachedData, and the force-Nanite-usage flag
+#                        from FRenderingObjectVersion::NaniteForceMaterialUsage
 #   UMaterialInterfaceEditorOnlyData MaterialInterface.cpp: the saved-cached-expression-data flag
 #   UBodySetup           PhysicsEngine/BodySetup.cpp: BodySetupGuid, the cooked flag, and the level-set implicit
 #                        objects saved between two Fortnite versions
@@ -37,6 +41,10 @@
 #                        ControlRigBlueprintGeneratedClass.cpp: the class's VM, serialized inline, and its graph function store
 #   UUAFAnimGraph        UAFAnimGraph Graph/AnimNextAnimationGraph.cpp: the shared data archive buffer, from
 #                        FFortniteMainBranchObjectVersion::AnimNextCombineParameterBlocksAndGraphs
+#   USoundNode           Sound/SoundNode.cpp, and USoundCue SoundCue.cpp: strip flags and, with editor data, the graph
+#                        node or the cue's graph
+#   USoundNodeWavePlayer Sound/SoundNodeWavePlayer.cpp: the hard sound wave reference, from
+#                        FFrameworkObjectVersion::HardSoundReferences
 # Other serializers of these classes in 5.8.3 save nothing after the tagged properties outside migration or cooking,
 # but some still read data that older engines saved; those reads are added as audits of older packages find them.
 # Recheck the Serialize overrides of these classes when regenerating for a new engine release.
@@ -65,6 +73,7 @@ awk -F'\t' '{p[$1]=$2; f[$1]=$3}
         if (x=="UWorldPartition") flags="WorldPartition|" flags
         if (x=="UMaterialInstance") flags="MaterialInstance|" flags
         if (x=="UMaterialInterface") flags="MaterialInterface|" flags
+        if (x=="UMaterial") flags="Material|" flags
         if (x=="UMaterialInterfaceEditorOnlyData") flags="MaterialEditorOnlyData|" flags
         if (x=="UBodySetup") flags="BodySetup|" flags
         if (x=="UObjectRedirector") flags="ObjectRedirector|" flags
@@ -78,6 +87,8 @@ awk -F'\t' '{p[$1]=$2; f[$1]=$3}
         if (x=="URigVMBlueprintGeneratedClass") flags="RigVMClass|" flags
         if (x=="UControlRigBlueprintGeneratedClass") flags="ControlRigClass|" flags
         if (x=="UUAFAnimGraph") flags="UAFAnimGraph|" flags
+        if (x=="USoundNode" || x=="USoundCue") flags="SoundNode|" flags
+        if (x=="USoundNodeWavePlayer") flags="SoundNodeWavePlayer|" flags
         x = (x in p) ? p[x] : ""
       }
       if (flags == "") continue

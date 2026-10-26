@@ -38,6 +38,9 @@ public enum NativeClassTail
     RigVMClass = 1048576,
     ControlRigClass = 2097152,
     UAFAnimGraph = 4194304,
+    Material = 8388608,
+    SoundNode = 16777216,
+    SoundNodeWavePlayer = 33554432,
 }
 
 /// <summary>RigVMCore/RigVMPropertyPath.h operator&lt;&lt;(FArchive&amp;, FRigVMPropertyPathDescription&amp;).</summary>
@@ -124,6 +127,12 @@ public class NativeClassTailData
     [JsonProperty] public bool? MaterialInstanceSavedCachedData;
     /// <summary>Material.cpp SerializeInlineShaderMaps: the count of inline shader maps, zero outside cooking.</summary>
     [JsonProperty] public int? MaterialInstanceInlineShaderMaps;
+    /// <summary>Material.cpp UMaterial::Serialize: the inline shader map count, zero outside cooking.</summary>
+    [JsonProperty] public int? MaterialInlineShaderMaps;
+    /// <summary>Material.cpp: the flag of legacy cached expression data, saved only between two versions.</summary>
+    [JsonProperty] public bool? MaterialLegacySavedCachedExpressionData;
+    /// <summary>Material.cpp: whether cooking forced Nanite usage.</summary>
+    [JsonProperty] public bool? MaterialForceNaniteUsage;
     /// <summary>MaterialInterface.cpp UMaterialInterfaceEditorOnlyData: whether cooked cached expression data follows.</summary>
     [JsonProperty] public bool? MaterialSavedCachedExpressionData;
     /// <summary>PhysicsEngine/BodySetup.cpp: the body setup's GUID, whether cooked collision data follows, and the
@@ -181,6 +190,14 @@ public class NativeClassTailData
     [JsonProperty] public byte[] UAFSharedDataArchiveBuffer;
     /// <summary>Bytes after an older anim graph's properties, which the engine skips by seeking to the export's end.</summary>
     [JsonProperty] public byte[] UAFSkippedBytes;
+    /// <summary>
+    /// Sound/SoundNode.cpp USoundNode::Serialize and SoundCue.cpp USoundCue::Serialize: strip flags (absent before cooked
+    /// editor assets) and the editor graph node, or the cue's editor graph.
+    /// </summary>
+    [JsonProperty] public byte[] SoundNodeStripFlags;
+    [JsonProperty] public FPackageIndex SoundNodeGraphNode;
+    /// <summary>Sound/SoundNodeWavePlayer.cpp: the hard reference to the sound wave.</summary>
+    [JsonProperty] public FPackageIndex SoundNodeWave;
 }
 
 public class FSimpleMemberReferenceData
@@ -198,7 +215,7 @@ public static class NativeClassTails
     static readonly Guid FortniteMainGuid = UAPUtils.GUID(0x601D1886, 0xAC644F84, 0xAA16D3DE, 0x0DEAC7D6);
     const int ActorComponentUCSModifiedPropertiesSparseStorage = 4, SerializeSceneComponentStaticBounds = 2,
         SerializeActorLabelInCookedBuilds = 4, IncreaseNormalPrecision = 26, MeshPaintTextureUsesEditorOnly = 166,
-        WorldPartitionSerializeStreamingPolicyOnCook = 74, MaterialSavedCachedData = 36, MaterialAttributeLayerParameters = 21,
+        WorldPartitionSerializeStreamingPolicyOnCook = 74, MaterialSavedCachedData = 36, MaterialAttributeLayerParameters = 21, NaniteForceMaterialUsage = 47,
         LevelsetSerializationSupportForBodySetup = 42, DisableLevelset_v14_10 = 1, RemovedAtmosphericFog = 46,
         DynamicTrackingKeysSerializedInComponent = 20, DeprecatedHighResSourceMesh = 49, SerializeMeshDescriptionBase = 25,
         TextureStreamingMeshUVChannelData = 10, MeshMaterialSlotOverlayMaterialAdded = 196, RemovingSourceAnimationData = 3,
@@ -445,6 +462,21 @@ public static class NativeClassTails
                 }
                 if (asset.ObjectVersion >= ObjectVersion.VER_UE4_MATERIAL_INSTANCE_BASE_PROPERTY_OVERRIDES && asset.ObjectVersion < ObjectVersion.VER_UE4_FIX_MATERIAL_PROPERTY_OVERRIDE_SERIALIZE) return;
             }
+            if (tails.HasFlag(NativeClassTail.Material))
+            {
+                if (asset.ObjectVersion >= ObjectVersion.VER_UE4_PURGED_FMATERIAL_COMPILE_OUTPUTS)
+                {
+                    data.MaterialInlineShaderMaps = reader.ReadInt32();
+                    if (data.MaterialInlineShaderMaps != 0) return;
+                }
+                if (asset.GetCustomVersion(UE5MainStreamGuid) >= MaterialSavedCachedData
+                    && asset.GetCustomVersion<FUE5ReleaseStreamObjectVersion>() < FUE5ReleaseStreamObjectVersion.MaterialInterfaceSavedCachedData)
+                {
+                    data.MaterialLegacySavedCachedExpressionData = reader.ReadBooleanInt();
+                    if (data.MaterialLegacySavedCachedExpressionData == true) return;
+                }
+                if (asset.GetCustomVersion(RenderingGuid) >= NaniteForceMaterialUsage) data.MaterialForceNaniteUsage = reader.ReadBooleanInt();
+            }
             if (tails.HasFlag(NativeClassTail.MaterialEditorOnlyData))
             {
                 data.MaterialSavedCachedExpressionData = reader.ReadBooleanInt();
@@ -501,6 +533,18 @@ public static class NativeClassTails
                 }
                 else data.UAFSkippedBytes = reader.ReadBytes((int)(stream.Length - stream.Position));
             }
+            if (tails.HasFlag(NativeClassTail.SoundNode))
+            {
+                bool editorData = true;
+                if (asset.ObjectVersion >= ObjectVersion.VER_UE4_COOKED_ASSETS_IN_EDITOR_SUPPORT)
+                {
+                    data.SoundNodeStripFlags = reader.ReadBytes(2);
+                    editorData = (data.SoundNodeStripFlags[0] & 1) == 0;
+                }
+                if (editorData) data.SoundNodeGraphNode = new FPackageIndex(reader);
+            }
+            if (tails.HasFlag(NativeClassTail.SoundNodeWavePlayer) && asset.GetCustomVersion<FFrameworkObjectVersion>() >= FFrameworkObjectVersion.HardSoundReferences)
+                data.SoundNodeWave = new FPackageIndex(reader);
             if (tails.HasFlag(NativeClassTail.PCGComponent) && asset.GetCustomVersion(PCGGuid) >= DynamicTrackingKeysSerializedInComponent)
             {
                 int keys = reader.ReadInt32();
@@ -584,6 +628,9 @@ public static class NativeClassTails
         if (data.MaterialInterfaceSavedCachedExpressionData != null) writer.WriteBooleanInt(data.MaterialInterfaceSavedCachedExpressionData.Value);
         if (data.MaterialInstanceSavedCachedData != null) writer.WriteBooleanInt(data.MaterialInstanceSavedCachedData.Value);
         if (data.MaterialInstanceInlineShaderMaps != null) writer.Write(data.MaterialInstanceInlineShaderMaps.Value);
+        if (data.MaterialInlineShaderMaps != null) writer.Write(data.MaterialInlineShaderMaps.Value);
+        if (data.MaterialLegacySavedCachedExpressionData != null) writer.WriteBooleanInt(data.MaterialLegacySavedCachedExpressionData.Value);
+        if (data.MaterialForceNaniteUsage != null) writer.WriteBooleanInt(data.MaterialForceNaniteUsage.Value);
         if (data.MaterialSavedCachedExpressionData != null) writer.WriteBooleanInt(data.MaterialSavedCachedExpressionData.Value);
         if (data.RedirectorDestination != null) data.RedirectorDestination.Write(writer);
         if (data.StaticMeshMaterials != null) WriteStaticMesh(writer, data);
@@ -611,6 +658,9 @@ public static class NativeClassTails
         if (data.GraphFunctionStoreBytes != null) writer.Write(data.GraphFunctionStoreBytes);
         if (data.UAFSharedDataArchiveBuffer != null) { writer.Write(data.UAFSharedDataArchiveBuffer.Length); writer.Write(data.UAFSharedDataArchiveBuffer); }
         if (data.UAFSkippedBytes != null) writer.Write(data.UAFSkippedBytes);
+        if (data.SoundNodeStripFlags != null) writer.Write(data.SoundNodeStripFlags);
+        data.SoundNodeGraphNode?.Write(writer);
+        data.SoundNodeWave?.Write(writer);
         if (data.PCGTrackedKeys != null)
         {
             writer.Write(data.PCGTrackedKeys.Count);
