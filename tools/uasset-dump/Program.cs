@@ -38,6 +38,9 @@ foreach (var m in (Environment.GetEnvironmentVariable("UASSET_USMAP") ?? "").Spl
 
 if (args[0] == "--trace") { try { _ = new UAsset(args[1], EngineVersion.UNKNOWN, mappings); Console.WriteLine("ok"); } catch (Exception ex) { Console.WriteLine(ex.ToString()); } return; }
 if (args[0] == "--failures") { var a = new UAsset(args[1], EngineVersion.UNKNOWN, mappings, CustomSerializationFlags.ReadOnlyStreaming); foreach (var f in a.ExportParseFailures) Console.WriteLine($"{f.ObjectName}\t{f.ClassType}\n{f.ExceptionDetails}"); return; }
+// --json <package> <out.json>: every decoded export, for reading a reference asset's graphs, tables and settings
+if (args[0] == "--json") { var a = new UAsset(args[1], EngineVersion.UNKNOWN, mappings, CustomSerializationFlags.ReadOnlyStreaming); File.WriteAllText(args[2], a.SerializeJson(true)); return; }
+if (args[0] == "--text") { var a = new UAsset(args[1], EngineVersion.UNKNOWN, mappings, CustomSerializationFlags.ReadOnlyStreaming); using var w = new StreamWriter(args[2]); TextDump.Write(a, w); return; }
 if (args[0] == "--check")
 {
     foreach (var path in args.Skip(1))
