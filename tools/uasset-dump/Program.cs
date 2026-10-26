@@ -89,7 +89,7 @@ if (args[0] == "--check")
     return;
 }
 
-// --classes <package>...: header only; one line per export: class name, package. Exports aren't parsed.
+// --classes <package>...: header only; one line per export class: class name, export count, package. Exports aren't parsed.
 if (args[0] == "--classes")
 {
     foreach (var path in args.Skip(1))
@@ -97,7 +97,7 @@ if (args[0] == "--classes")
         try
         {
             var asset = new UAsset(path, EngineVersion.UNKNOWN, mappings, CustomSerializationFlags.SkipLoadingExports | CustomSerializationFlags.ReadOnlyStreaming);
-            foreach (var cls in asset.Exports.Select(e => e.GetExportClassType()?.Value?.Value ?? "?").Distinct()) Console.WriteLine($"{cls}\t{path}");
+            foreach (var g in asset.Exports.GroupBy(e => e.GetExportClassType()?.Value?.Value ?? "?")) Console.WriteLine($"{g.Key}\t{g.Count()}\t{path}");
         }
         catch (Exception ex) { Console.WriteLine($"!fail:{ex.GetType().Name}: {ex.Message.Split('\n')[0]}\t{path}"); }
     }
@@ -256,24 +256,62 @@ void Audit(UAsset asset, string path, TextWriter o)
         // bytes after them never reach the engine: "cdotrail" keeps them apart from undecoded data the engine does read
         if (e.Extras != null && e.Extras.Length > 0) o.WriteLine($"{(e.ObjectFlags.HasFlag(EObjectFlags.RF_ClassDefaultObject) ? "cdotrail" : "extras")}\t{cls}\t{e.Extras.Length}\t{name}{(e.NativeTailFailure == null ? "" : $" [{e.NativeTailFailure}]")}\t{path}");
         if (e is NormalExport n) foreach (var p in n.Data) Walk(p, cls, name, path, o);
+        if (e.NativeTails != null) Blobs(e.NativeTails, cls, name, "", path, o, 0);
     }
 }
 
 bool WriteNative(UAsset a, TextWriter w, string only)
 {
+    // one compact JSON line per export after its header line; the tagged properties are --text's, so they're detached
+    // rather than serialized and discarded
+    var serializer = UAsset.CreateReadableJsonSerializer();
     bool any = false;
     for (int i = 0; i < a.Exports.Count; i++)
     {
         var e = a.Exports[i];
         if (only != null && e.ObjectName.ToString() != only) continue;
-        var o = Newtonsoft.Json.Linq.JObject.Parse(a.SerializeJsonObject(e, true));
-        foreach (var header in new[] { "Data", "ObjectName", "OuterIndex", "ClassIndex", "SuperIndex", "TemplateIndex", "ObjectFlags", "SerialSize", "SerialOffset", "ScriptSerializationStartOffset", "ScriptSerializationEndOffset", "bForcedExport", "bNotForClient", "bNotForServer", "PackageGuid", "IsInheritedInstance", "PackageFlags", "bNotAlwaysLoadedForEditorGame", "bIsAsset", "GeneratePublicHash", "SerializationBeforeSerializationDependencies", "CreateBeforeSerializationDependencies", "SerializationBeforeCreateDependencies", "CreateBeforeCreateDependencies", "PublicExportHash", "Padding", "Extras", "$type", "SerializationControl", "Operation", "HasLeadingFourNullBytes", "HasNoTaggedProperties" })
+        var data = (e as NormalExport)?.Data;
+        if (e is NormalExport detach) detach.Data = null;
+        Newtonsoft.Json.Linq.JObject o;
+        try { o = Newtonsoft.Json.Linq.JObject.FromObject(e, serializer); }
+        finally { if (e is NormalExport attach) attach.Data = data; }
+        foreach (var header in new[] { "ObjectName", "OuterIndex", "ClassIndex", "SuperIndex", "TemplateIndex", "ObjectFlags", "SerialSize", "SerialOffset", "ScriptSerializationStartOffset", "ScriptSerializationEndOffset", "bForcedExport", "bNotForClient", "bNotForServer", "PackageGuid", "IsInheritedInstance", "PackageFlags", "bNotAlwaysLoadedForEditorGame", "bIsAsset", "GeneratePublicHash", "SerializationBeforeSerializationDependencies", "CreateBeforeSerializationDependencies", "SerializationBeforeCreateDependencies", "CreateBeforeCreateDependencies", "PublicExportHash", "Padding", "Extras", "SerializationControl", "Operation", "HasLeadingFourNullBytes", "HasNoTaggedProperties" })
             o.Remove(header);
-        foreach (var p in o.Properties().ToList()) if (p.Value.Type == Newtonsoft.Json.Linq.JTokenType.Null || (p.Value is Newtonsoft.Json.Linq.JArray arr && arr.Count == 0)) p.Remove();
+        foreach (var p in o.Properties().ToList()) if (p.Value is Newtonsoft.Json.Linq.JArray arr && arr.Count == 0) p.Remove();
         if (!o.HasValues) continue;
         any = true;
         w.WriteLine($"#{i + 1} {e.GetExportClassType()?.Value?.Value} {e.ObjectName}");
-        w.WriteLine(o.ToString(Newtonsoft.Json.Formatting.Indented));
+        o.WriteTo(new Newtonsoft.Json.JsonTextWriter(w) { Formatting = Newtonsoft.Json.Formatting.None, CloseOutput = false });
+        w.WriteLine();
     }
     return any;
+}
+
+// Byte arrays kept inside decoded native data: "blob", the class, the size and the member path. A blob is either a
+// payload whose format is its own (pixels, compressed buffers, embedded files) or structure still to decode.
+static void Blobs(object v, string cls, string name, string at, string path, TextWriter w, int depth)
+{
+    if (v == null || depth > 12) return;
+    switch (v)
+    {
+        case byte[] b:
+            if (b.Length > 0) w.WriteLine($"blob\t{cls}\t{b.Length}\t{name}{at}\t{path}");
+            return;
+        case UAssetAPI.ExportTypes.Payload pl:
+            if (pl.Data?.Length > 0) w.WriteLine($"payload\t{cls}:{pl.Format}\t{pl.Data.Length}\t{name}{at}\t{path}");
+            return;
+        case string or Enum or ValueType: return;
+        case System.Collections.IDictionary d:
+            foreach (System.Collections.DictionaryEntry kv in d) Blobs(kv.Value, cls, name, $"{at}.{kv.Key}", path, w, depth + 1);
+            return;
+        case System.Collections.IEnumerable list:
+            int i = 0;
+            foreach (var x in list) { Blobs(x, cls, name, $"{at}[{(i < 1 ? "0" : "*")}]", path, w, depth + 1); if (++i > 4096) break; }
+            return;
+    }
+    var type = v.GetType();
+    if (type.Namespace == null || !type.Namespace.StartsWith("UAssetAPI")) return;
+    if (v is UAssetAPI.PropertyTypes.Objects.PropertyData) return; // tagged data is --audit's Walk
+    foreach (var f in type.GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance))
+        if (!f.IsDefined(typeof(UAssetAPI.JSON.WriteBackCopyAttribute), true)) Blobs(f.GetValue(v), cls, name, $"{at}.{f.Name}", path, w, depth + 1);
 }
