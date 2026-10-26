@@ -1,3 +1,4 @@
+using System.Linq;
 using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
@@ -319,9 +320,16 @@ internal static class ClassSerializers
                     if (Ver(PCGGuid) >= 24)
                     {
                         d["DefaultDomain"] = new object[] { r.ReadByte(), r.ReadInt32() };
-                        d["DomainIDs"] = c.Array(() => new object[] { r.ReadByte(), r.ReadInt32() }, 5);
+                        var ids = c.Array(() => new object[] { r.ReadByte(), r.ReadInt32() }, 5);
+                        d["DomainIDs"] = ids;
+                        // per domain, whether it is valid, then (unless it is the default domain) its attributes
+                        d["Domains"] = ids.Select(id =>
+                        {
+                            bool valid = c.Bool();
+                            return (object)new object[] { id, valid, valid && (byte)id[0] != 0 ? ReadPCGMetadataDomain(c, r, asset) : null };
+                        }).ToList();
                     }
-                    d["Domains"] = Rest();
+                    else d["Domains"] = new List<object> { ReadPCGMetadataDomain(c, r, asset) };
                     break;
                 case "UDataflow": d["Graph"] = ReadDataflowGraph(c, r, asset); break;
                 case "UPCGPolygon2DData":
@@ -1392,6 +1400,116 @@ internal static class ClassSerializers
         }
         if (fortnite >= (int)FFortniteMainBranchObjectVersion.MorphTargetCustomImport) m["SourceFilename"] = c.Str();
         return m;
+    }
+
+    const int ConvertFPCGMetadataAttributeToGenericAttributes = 266, MergePCGMetadataAttributeBaseAndGeneric = 267;
+
+    /// <summary>PCGMetadataDomain.cpp FPCGMetadataDomain::Serialize: the attribute count, then per attribute its name, its
+    /// description (a type ID before MergePCGMetadataAttributeBaseAndGeneric, then FPCGMetadataAttributeDesc's tagged
+    /// properties against the default description) and the attribute; then the parent entry keys.</summary>
+    static Dictionary<string, object> ReadPCGMetadataDomain(Cursor c, AssetBinaryReader r, UAsset asset)
+    {
+        int fortnite = (int)asset.GetCustomVersion<FFortniteMainBranchObjectVersion>();
+        var attributes = new List<object>();
+        int n = r.ReadInt32();
+        for (int i = 0; i < n; i++)
+        {
+            var a = new Dictionary<string, object> { ["Name"] = c.Name() };
+            int type; string typeObject = null; var containers = new List<string>();
+            if (fortnite < MergePCGMetadataAttributeBaseAndGeneric) { type = r.ReadInt32(); a["ValueType"] = type; }
+            else
+            {
+                var desc = c.Tagged("PCGMetadataAttributeDesc");
+                a["Desc"] = desc;
+                (type, typeObject) = PCGDescType(desc, containers);
+            }
+            ReadPCGMetadataAttribute(a, c, r, asset, type, typeObject, containers, fortnite);
+            attributes.Add(a);
+        }
+        return new Dictionary<string, object> { ["Attributes"] = attributes, ["ParentKeys"] = c.Array(() => r.ReadInt64(), 8) };
+    }
+
+    static readonly string[] PCGMetadataTypes = { "Float", "Double", "Integer32", "Integer64", "Vector2", "Vector", "Vector4",
+        "Quaternion", "Transform", "String", "Boolean", "Rotator", "Name", "SoftObjectPath", "SoftClassPath", "EndLegacyTypes",
+        "Byte", "Text", "Enum", "Struct", "Object", "SoftObject", "Class", "SoftClass" };
+
+    /// <summary>The value type, its object and the container types from a decoded FPCGMetadataAttributeDesc.</summary>
+    static (int, string) PCGDescType(StructPropertyData desc, List<string> containers)
+    {
+        int type = -1; string typeObject = null;
+        foreach (var p in desc.Value)
+        {
+            switch (p.Name.ToString())
+            {
+                case "ValueType":
+                    string v = (p as PropertyTypes.Objects.EnumPropertyData)?.Value?.ToString() ?? (p as PropertyTypes.Objects.BytePropertyData)?.EnumValue?.ToString();
+                    if (v != null) type = Array.IndexOf(PCGMetadataTypes, v.Split("::").Last());
+                    break;
+                case "ValueTypeObject": typeObject = (p as PropertyTypes.Objects.ObjectPropertyData)?.Value?.ToString(); break;
+                case "ContainerTypes":
+                    if (p is PropertyTypes.Objects.ArrayPropertyData arr)
+                        foreach (var e in arr.Value) containers.Add(((e as PropertyTypes.Objects.EnumPropertyData)?.Value?.ToString() ?? (e as PropertyTypes.Objects.BytePropertyData)?.EnumValue?.ToString() ?? "").Split("::").Last());
+                    break;
+            }
+        }
+        // FPCGMetadataAttributeDesc's default value type is Unknown (255): an unserialized type is the default
+        if (type < 0) throw new FormatException("PCG attribute description without a value type");
+        return (type, typeObject);
+    }
+
+    /// <summary>PCGMetadataAttribute.cpp FPCGMetadataAttributeBase::BaseSerialize and Serialize: the entry-to-value key map, the
+    /// parent attribute ID, name and ID; then (without a parent) the cached description, the default value and the values,
+    /// serialized by the property PCG builds from the description. Before ConvertFPCGMetadataAttributeToGenericAttributes the
+    /// values and default value followed the base data as a typed array and value.</summary>
+    static void ReadPCGMetadataAttribute(Dictionary<string, object> a, Cursor c, AssetBinaryReader r, UAsset asset, int type,
+        string typeObject, List<string> containers, int fortnite)
+    {
+        a["EntryToValueKeyMap"] = c.Array(() => new object[] { r.ReadInt64(), r.ReadInt32() }, 12);
+        int parent = r.ReadInt32();
+        a["ParentAttributeId"] = parent;
+        a["AttributeName"] = c.Name();
+        a["AttributeId"] = r.ReadInt32();
+        if (fortnite < ConvertFPCGMetadataAttributeToGenericAttributes)
+        {
+            a["Values"] = c.Array(() => PCGValue(c, r, type, typeObject, true), 1);
+            a["DefaultValue"] = PCGValue(c, r, type, typeObject, true);
+            return;
+        }
+        if (parent >= 0) throw new FormatException("PCG attribute with a parent: its description is the parent's, in another domain");
+        var desc = c.Tagged("PCGMetadataAttributeDesc");
+        a["CachedDesc"] = desc;
+        containers = new List<string>();
+        (type, typeObject) = PCGDescType(desc, containers);
+        if (containers.Count > 0) throw new FormatException($"PCG {string.Join("/", containers)} attribute");
+        a["DefaultValue"] = PCGValue(c, r, type, typeObject, false);
+        a["Values"] = c.Array(() => PCGValue(c, r, type, typeObject, false), 1);
+    }
+
+    /// <summary>One PCG attribute value: by operator&lt;&lt; for the legacy typed arrays (a bool is four bytes), by the
+    /// property's SerializeItem otherwise (a bool is one byte). Vectors, rotators, quaternions and transforms are immutable
+    /// structs, serialized binary in double precision; a transform is its rotation, translation and scale.</summary>
+    static object PCGValue(Cursor c, AssetBinaryReader r, int type, string typeObject, bool legacy)
+    {
+        switch (PCGMetadataTypes[type])
+        {
+            case "Float": return r.ReadSingle();
+            case "Double": return r.ReadDouble();
+            case "Integer32": return r.ReadInt32();
+            case "Integer64": return r.ReadInt64();
+            case "Vector2": return c.Doubles(2, true);
+            case "Vector": case "Rotator": return c.Doubles(3, true);
+            case "Vector4": case "Quaternion": return c.Doubles(4, true);
+            case "Transform": return c.Doubles(10, true);
+            case "String": return c.Str();
+            case "Boolean": return legacy ? c.Bool() : r.ReadByte() != 0;
+            case "Name": return c.Name();
+            case "SoftObjectPath": case "SoftClassPath": case "SoftObject": case "SoftClass": return new FSoftObjectPath(r);
+            case "Byte": case "Enum": return r.ReadByte();
+            case "Text": return c.Text();
+            case "Object": case "Class": return new FPackageIndex(r);
+            case "Struct": return c.Tagged(typeObject?.Split('.').Last() ?? "Generic");
+            default: throw new FormatException($"PCG attribute type {type}");
+        }
     }
 
 }
