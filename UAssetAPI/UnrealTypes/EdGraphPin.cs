@@ -5,7 +5,7 @@ using UAssetAPI.PropertyTypes.Objects;
 
 namespace UAssetAPI.UnrealTypes;
 
-public enum EEdGraphPinDirection : byte { Input, Output }
+public enum EEdGraphPinDirection : byte { Input, Output, Max }
 public enum EPinContainerType : byte { None, Array, Set, Map }
 
 /// <summary>The persistent, native FEdGraphTerminalType used for a map value.</summary>
@@ -27,24 +27,29 @@ public class FEdGraphTerminalType : ICloneable
         return copy;
     }
 
-    internal static FEdGraphTerminalType Read(AssetBinaryReader reader) => new()
+    /// <summary>EdGraphNode.cpp operator&lt;&lt;(FArchive&amp;, FEdGraphTerminalType&amp;).</summary>
+    internal static FEdGraphTerminalType Read(AssetBinaryReader reader)
     {
-        TerminalCategory = EdGraphPinSerialization.ReadName(reader),
-        TerminalSubCategory = EdGraphPinSerialization.ReadName(reader),
-        TerminalSubCategoryObject = EdGraphPinSerialization.ReadObject(reader),
-        IsConst = reader.ReadBooleanInt(),
-        IsWeakPointer = reader.ReadBooleanInt(),
-        IsUObjectWrapper = reader.ReadBooleanInt()
-    };
+        var result = new FEdGraphTerminalType
+        {
+            TerminalCategory = EdGraphPinSerialization.ReadPinName(reader),
+            TerminalSubCategory = EdGraphPinSerialization.ReadPinName(reader),
+            TerminalSubCategoryObject = EdGraphPinSerialization.ReadObject(reader),
+            IsConst = reader.ReadBooleanInt(),
+            IsWeakPointer = reader.ReadBooleanInt()
+        };
+        if (EdGraphPinSerialization.HasUObjectWrapper(reader.Asset)) result.IsUObjectWrapper = reader.ReadBooleanInt();
+        return result;
+    }
 
     internal void Write(AssetBinaryWriter writer)
     {
-        writer.Write(TerminalCategory);
-        writer.Write(TerminalSubCategory);
+        EdGraphPinSerialization.WritePinName(writer, TerminalCategory);
+        EdGraphPinSerialization.WritePinName(writer, TerminalSubCategory);
         EdGraphPinSerialization.WriteObject(writer, TerminalSubCategoryObject);
         writer.WriteBooleanInt(IsConst);
         writer.WriteBooleanInt(IsWeakPointer);
-        writer.WriteBooleanInt(IsUObjectWrapper);
+        if (EdGraphPinSerialization.HasUObjectWrapper(writer.Asset)) writer.WriteBooleanInt(IsUObjectWrapper);
     }
 }
 
@@ -77,47 +82,89 @@ public class FEdGraphPinType : ICloneable
         return copy;
     }
 
+    /// <summary>
+    /// EdGraphPin.cpp FEdGraphPinType::Serialize, field by field with its version gates. Values are kept as stored: the
+    /// load-time fixups (asset to softobject, float and double to real) are left to the reader of the data.
+    /// </summary>
     public static FEdGraphPinType Read(AssetBinaryReader reader)
     {
-        EdGraphPinSerialization.RequireProfile(reader.Asset);
+        EdGraphPinSerialization.RequirePinTypeLayout(reader.Asset);
+        var asset = reader.Asset;
         var result = new FEdGraphPinType
         {
-            PinCategory = EdGraphPinSerialization.ReadName(reader),
-            PinSubCategory = EdGraphPinSerialization.ReadName(reader),
-            PinSubCategoryObject = EdGraphPinSerialization.ReadObject(reader),
-            ContainerType = (EPinContainerType)reader.ReadByte()
+            PinCategory = EdGraphPinSerialization.ReadPinName(reader),
+            PinSubCategory = EdGraphPinSerialization.ReadPinName(reader),
+            PinSubCategoryObject = EdGraphPinSerialization.ReadObject(reader)
         };
-        if (result.ContainerType > EPinContainerType.Map) throw new FormatException($"Invalid pin container at byte {reader.BaseStream.Position - 1}");
-        if (result.ContainerType == EPinContainerType.Map) result.PinValueType = FEdGraphTerminalType.Read(reader);
+        if (asset.GetCustomVersion<FFrameworkObjectVersion>() >= FFrameworkObjectVersion.EdGraphPinContainerType)
+        {
+            result.ContainerType = (EPinContainerType)reader.ReadByte();
+            if (result.ContainerType > EPinContainerType.Map) throw new FormatException($"Invalid pin container at byte {reader.BaseStream.Position - 1}");
+            if (result.ContainerType == EPinContainerType.Map) result.PinValueType = FEdGraphTerminalType.Read(reader);
+        }
+        else
+        {
+            bool isMap = false, isSet = false;
+            if (EdGraphPinSerialization.HasAdvancedContainers(asset))
+            {
+                isMap = reader.ReadBooleanInt();
+                if (isMap) result.PinValueType = FEdGraphTerminalType.Read(reader);
+                isSet = reader.ReadBooleanInt();
+            }
+            bool isArray = reader.ReadBooleanInt();
+            // FEdGraphPinType::ToPinContainerType
+            result.ContainerType = isArray ? EPinContainerType.Array : isSet ? EPinContainerType.Set : isMap ? EPinContainerType.Map : EPinContainerType.None;
+        }
         result.IsReference = reader.ReadBooleanInt();
         result.IsWeakPointer = reader.ReadBooleanInt();
-        result.MemberParent = EdGraphPinSerialization.ReadObject(reader);
-        result.MemberName = EdGraphPinSerialization.ReadName(reader);
-        result.MemberGuid = reader.ReadGuid();
-        result.IsConst = reader.ReadBooleanInt();
-        result.IsUObjectWrapper = reader.ReadBooleanInt();
-        if (EdGraphPinSerialization.HasSinglePrecisionFlag(reader.Asset)) result.SerializeAsSinglePrecisionFloat = reader.ReadBooleanInt();
+        if (asset.ObjectVersion >= ObjectVersion.VER_UE4_MEMBERREFERENCE_IN_PINTYPE)
+        {
+            result.MemberParent = EdGraphPinSerialization.ReadObject(reader);
+            result.MemberName = EdGraphPinSerialization.ReadName(reader);
+            result.MemberGuid = reader.ReadGuid();
+        }
+        if (asset.ObjectVersion >= ObjectVersion.VER_UE4_SERIALIZE_PINTYPE_CONST) result.IsConst = reader.ReadBooleanInt();
+        if (EdGraphPinSerialization.HasUObjectWrapper(asset)) result.IsUObjectWrapper = reader.ReadBooleanInt();
+        if (EdGraphPinSerialization.HasSinglePrecisionFlag(asset)) result.SerializeAsSinglePrecisionFloat = reader.ReadBooleanInt();
         return result;
     }
 
     public void Write(AssetBinaryWriter writer)
     {
-        EdGraphPinSerialization.RequireProfile(writer.Asset);
+        EdGraphPinSerialization.RequirePinTypeLayout(writer.Asset);
+        var asset = writer.Asset;
         if (ContainerType > EPinContainerType.Map || (ContainerType == EPinContainerType.Map) != (PinValueType != null))
             throw new FormatException("Invalid pin container or map terminal type");
-        writer.Write(PinCategory);
-        writer.Write(PinSubCategory);
+        EdGraphPinSerialization.WritePinName(writer, PinCategory);
+        EdGraphPinSerialization.WritePinName(writer, PinSubCategory);
         EdGraphPinSerialization.WriteObject(writer, PinSubCategoryObject);
-        writer.Write((byte)ContainerType);
-        PinValueType?.Write(writer);
+        if (asset.GetCustomVersion<FFrameworkObjectVersion>() >= FFrameworkObjectVersion.EdGraphPinContainerType)
+        {
+            writer.Write((byte)ContainerType);
+            PinValueType?.Write(writer);
+        }
+        else
+        {
+            if (EdGraphPinSerialization.HasAdvancedContainers(asset))
+            {
+                writer.WriteBooleanInt(ContainerType == EPinContainerType.Map);
+                PinValueType?.Write(writer);
+                writer.WriteBooleanInt(ContainerType == EPinContainerType.Set);
+            }
+            else if (ContainerType > EPinContainerType.Array) throw new FormatException("Sets and maps need FBlueprintsObjectVersion::AdvancedContainerSupport");
+            writer.WriteBooleanInt(ContainerType == EPinContainerType.Array);
+        }
         writer.WriteBooleanInt(IsReference);
         writer.WriteBooleanInt(IsWeakPointer);
-        EdGraphPinSerialization.WriteObject(writer, MemberParent);
-        writer.Write(MemberName);
-        writer.Write(MemberGuid);
-        writer.WriteBooleanInt(IsConst);
-        writer.WriteBooleanInt(IsUObjectWrapper);
-        if (EdGraphPinSerialization.HasSinglePrecisionFlag(writer.Asset)) writer.WriteBooleanInt(SerializeAsSinglePrecisionFloat);
+        if (asset.ObjectVersion >= ObjectVersion.VER_UE4_MEMBERREFERENCE_IN_PINTYPE)
+        {
+            EdGraphPinSerialization.WriteObject(writer, MemberParent);
+            writer.Write(MemberName);
+            writer.Write(MemberGuid);
+        }
+        if (asset.ObjectVersion >= ObjectVersion.VER_UE4_SERIALIZE_PINTYPE_CONST) writer.WriteBooleanInt(IsConst);
+        if (EdGraphPinSerialization.HasUObjectWrapper(asset)) writer.WriteBooleanInt(IsUObjectWrapper);
+        if (EdGraphPinSerialization.HasSinglePrecisionFlag(asset)) writer.WriteBooleanInt(SerializeAsSinglePrecisionFloat);
     }
 }
 
@@ -128,20 +175,52 @@ public class FUserPinInfo
     public EEdGraphPinDirection DesiredPinDirection;
     public FString PinDefaultValue;
 
-    internal static FUserPinInfo Read(AssetBinaryReader reader) => new()
+    /// <summary>K2Node_EditablePinBase.cpp operator&lt;&lt;(FArchive&amp;, FUserPinInfo&amp;). Before
+    /// VER_UE4_SERIALIZE_PINTYPE_CONST the pin type was a short legacy record and no direction was stored.</summary>
+    internal static FUserPinInfo Read(AssetBinaryReader reader)
     {
-        PinName = EdGraphPinSerialization.ReadName(reader),
-        PinType = FEdGraphPinType.Read(reader),
-        DesiredPinDirection = EdGraphPinSerialization.ReadDirection(reader),
-        PinDefaultValue = reader.ReadFString()
-    };
+        var result = new FUserPinInfo { PinName = EdGraphPinSerialization.ReadPinName(reader) };
+        if (reader.Asset.ObjectVersion >= ObjectVersion.VER_UE4_SERIALIZE_PINTYPE_CONST)
+        {
+            result.PinType = FEdGraphPinType.Read(reader);
+            // FUserPinInfo's constructor leaves DesiredPinDirection at EGPD_MAX, and pins created that way save it
+            result.DesiredPinDirection = (EEdGraphPinDirection)reader.ReadByte();
+            if (result.DesiredPinDirection > EEdGraphPinDirection.Max) throw new FormatException($"Invalid signature pin direction at byte {reader.BaseStream.Position - 1}");
+        }
+        else
+        {
+            bool isArray = reader.ReadBooleanInt();
+            result.PinType = new FEdGraphPinType
+            {
+                ContainerType = isArray ? EPinContainerType.Array : EPinContainerType.None,
+                IsReference = reader.ReadBooleanInt(),
+                PinCategory = FName.DefineDummy(reader.Asset, reader.ReadFString()),
+                PinSubCategory = FName.DefineDummy(reader.Asset, reader.ReadFString()),
+                PinSubCategoryObject = EdGraphPinSerialization.ReadObject(reader)
+            };
+            result.DesiredPinDirection = EEdGraphPinDirection.Max;
+        }
+        result.PinDefaultValue = reader.ReadFString();
+        return result;
+    }
 
     internal void Write(AssetBinaryWriter writer)
     {
-        if (DesiredPinDirection > EEdGraphPinDirection.Output) throw new FormatException("Invalid signature pin direction");
-        writer.Write(PinName);
-        PinType.Write(writer);
-        writer.Write((byte)DesiredPinDirection);
+        EdGraphPinSerialization.WritePinName(writer, PinName);
+        if (writer.Asset.ObjectVersion >= ObjectVersion.VER_UE4_SERIALIZE_PINTYPE_CONST)
+        {
+            if (DesiredPinDirection > EEdGraphPinDirection.Max) throw new FormatException("Invalid signature pin direction");
+            PinType.Write(writer);
+            writer.Write((byte)DesiredPinDirection);
+        }
+        else
+        {
+            writer.WriteBooleanInt(PinType.ContainerType == EPinContainerType.Array);
+            writer.WriteBooleanInt(PinType.IsReference);
+            writer.Write(PinType.PinCategory.Value);
+            writer.Write(PinType.PinSubCategory.Value);
+            EdGraphPinSerialization.WriteObject(writer, PinType.PinSubCategoryObject);
+        }
         writer.Write(PinDefaultValue);
     }
 }
@@ -197,7 +276,7 @@ public class EdGraphPin : EdGraphPinReference
         {
             OwningNode = EdGraphPinSerialization.ReadObject(reader),
             PinId = reader.ReadGuid(),
-            PinName = EdGraphPinSerialization.ReadName(reader),
+            PinName = EdGraphPinSerialization.ReadPinName(reader),
             PinFriendlyName = ReadText(reader),
             SourceIndex = EdGraphPinSerialization.HasSourceIndex(reader.Asset) ? reader.ReadInt32() : -1,
             PinToolTip = reader.ReadFString(),
@@ -245,7 +324,7 @@ public class EdGraphPin : EdGraphPinReference
         EdGraphPinReference.Write(writer, this);
         EdGraphPinSerialization.WriteObject(writer, OwningNode);
         writer.Write(PinId);
-        writer.Write(PinName);
+        EdGraphPinSerialization.WritePinName(writer, PinName);
         PinFriendlyName.Write(writer, false);
         if (EdGraphPinSerialization.HasSourceIndex(writer.Asset)) writer.Write(SourceIndex);
         writer.Write(PinToolTip);
@@ -272,22 +351,43 @@ internal static class EdGraphPinSerialization
     internal static void RequireProfile(UAsset asset)
     {
         if (!SupportsProfile(asset))
-            throw new NotSupportedException("Native editor pins need an uncooked, tagged, unfiltered package with the UE 4.19+ pin layout (Blueprints >= EdGraphPinOptimized, Framework >= EdGraphPinContainerType, Release >= PinTypeIncludesUObjectWrapperFlag)");
+            throw new NotSupportedException("Native editor pins need an uncooked, tagged, unfiltered package with owned pin arrays (FBlueprintsObjectVersion::EdGraphPinOptimized)");
     }
 
     /// <summary>
-    /// EdGraphPin.cpp UEdGraphPin::Serialize and FEdGraphPinType::Serialize: owned pin arrays since
-    /// FBlueprintsObjectVersion::EdGraphPinOptimized, pin names as FNames since PinsStoreFName, container types since
-    /// EdGraphPinContainerType, member references and const since their UE4 object versions, and the UObject wrapper flag
-    /// since FReleaseObjectVersion::PinTypeIncludesUObjectWrapperFlag. Later fields are gated where they're read.
+    /// EdGraphNode.cpp UEdGraphNode::Serialize stores pins natively since FBlueprintsObjectVersion::EdGraphPinOptimized;
+    /// before that they were separate UEdGraphPin_Deprecated exports. The editor-only pin fields need an unfiltered,
+    /// uncooked package. Every other field is gated where it's read, as UEdGraphPin::Serialize gates it.
     /// </summary>
     internal static bool SupportsProfile(UAsset asset) =>
         !asset.IsFilterEditorOnly && !asset.HasUnversionedProperties && !asset.PackageFlags.HasFlag(EPackageFlags.PKG_Cooked) &&
-        asset.GetCustomVersion(BlueprintsGuid) >= 4 &&
-        asset.GetCustomVersion<FFrameworkObjectVersion>() >= FFrameworkObjectVersion.EdGraphPinContainerType &&
-        asset.GetCustomVersion<FFrameworkObjectVersion>() >= FFrameworkObjectVersion.PinsStoreFName &&
-        asset.ObjectVersion >= ObjectVersion.VER_UE4_SERIALIZE_PINTYPE_CONST &&
+        asset.GetCustomVersion(BlueprintsGuid) >= 4 && asset.ObjectVersion >= ObjectVersion.VER_UE4_EDGRAPHPINTYPE_SERIALIZATION;
+
+    /// <summary>FEdGraphPinType::Serialize returns false before VER_UE4_EDGRAPHPINTYPE_SERIALIZATION, leaving the struct tagged.</summary>
+    internal static void RequirePinTypeLayout(UAsset asset)
+    {
+        if (asset.ObjectVersion < ObjectVersion.VER_UE4_EDGRAPHPINTYPE_SERIALIZATION || asset.HasUnversionedProperties)
+            throw new NotSupportedException("FEdGraphPinType is natively serialized only in tagged packages since VER_UE4_EDGRAPHPINTYPE_SERIALIZATION");
+    }
+
+    /// <summary>FFrameworkObjectVersion::PinsStoreFName: pin, category and parameter names are FNames, before it FStrings.</summary>
+    internal static bool PinNamesAreFNames(UAsset asset) => asset.GetCustomVersion<FFrameworkObjectVersion>() >= FFrameworkObjectVersion.PinsStoreFName;
+
+    /// <summary>FBlueprintsObjectVersion::AdvancedContainerSupport (6): set and map flags in the pre-EdGraphPinContainerType layout.</summary>
+    internal static bool HasAdvancedContainers(UAsset asset) => asset.GetCustomVersion(BlueprintsGuid) >= 6;
+
+    /// <summary>FReleaseObjectVersion::PinTypeIncludesUObjectWrapperFlag.</summary>
+    internal static bool HasUObjectWrapper(UAsset asset) =>
         asset.GetCustomVersion<FReleaseObjectVersion>() >= FReleaseObjectVersion.PinTypeIncludesUObjectWrapperFlag;
+
+    internal static FName ReadPinName(AssetBinaryReader reader) =>
+        PinNamesAreFNames(reader.Asset) ? ReadName(reader) : FName.DefineDummy(reader.Asset, reader.ReadFString());
+
+    internal static void WritePinName(AssetBinaryWriter writer, FName name)
+    {
+        if (PinNamesAreFNames(writer.Asset)) writer.Write(name);
+        else writer.Write(name.Value);
+    }
 
     /// <summary>FUE5MainStreamObjectVersion::EdGraphPinSourceIndex (50).</summary>
     internal static bool HasSourceIndex(UAsset asset) => asset.GetCustomVersion(UE5MainStreamGuid) >= 50;

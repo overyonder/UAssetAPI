@@ -33,6 +33,7 @@ namespace UAssetAPI.PropertyTypes.Objects
         NoExtension = 0x00,
         ReserveForFutureUse = 0x01,
         OverridableInformation = 0x02,
+        HasExternalsObjects = 0x04,
     }
 
     public enum EOverriddenPropertyOperation
@@ -155,6 +156,9 @@ namespace UAssetAPI.PropertyTypes.Objects
         public EOverriddenPropertyOperation OverrideOperation;
         [JsonProperty]
         public bool bExperimentalOverridableLogic;
+        /// <summary>FPropertyTag::bExperimentalExternalObjects, stored when the tag has EPropertyTagExtension::HasExternalsObjects.</summary>
+        [JsonProperty]
+        public bool bExperimentalExternalObjects;
         public bool ShouldSerializeOverrideOperation()
         {
             return PropertyTagExtensions.HasFlag(EPropertyTagExtension.OverridableInformation);
@@ -276,6 +280,7 @@ namespace UAssetAPI.PropertyTypes.Objects
                         OverrideOperation = (EOverriddenPropertyOperation)reader.ReadByte();
                         bExperimentalOverridableLogic = reader.ReadBooleanInt();
                     }
+                    if (PropertyTagExtensions.HasFlag(EPropertyTagExtension.HasExternalsObjects)) bExperimentalExternalObjects = reader.ReadBooleanInt();
                 }
             }
         }
@@ -321,6 +326,7 @@ namespace UAssetAPI.PropertyTypes.Objects
                         writer.Write((byte)OverrideOperation);
                         writer.WriteBooleanInt(bExperimentalOverridableLogic);
                     }
+                    if (PropertyTagExtensions.HasFlag(EPropertyTagExtension.HasExternalsObjects)) writer.WriteBooleanInt(bExperimentalExternalObjects);
                 }
             }
         }

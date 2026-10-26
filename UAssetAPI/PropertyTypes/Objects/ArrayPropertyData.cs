@@ -16,6 +16,25 @@ public class ArrayPropertyData : PropertyData<PropertyData[]>
     public FName ArrayType;
     [JsonProperty]
     public StructPropertyData DummyStruct;
+    /// <summary>
+    /// The extension bytes of a struct array's inner FPropertyTag (PropertyArray.cpp writes the whole tag between
+    /// VER_UE4_INNER_ARRAY_TAG_INFO and PROPERTY_TAG_COMPLETE_TYPE_NAME), kept as stored.
+    /// </summary>
+    [JsonProperty]
+    public byte[] InnerTagExtensions;
+
+    /// <summary>PropertyTag.cpp SerializePropertyExtensions: a flags byte, then the overridable operation and logic flag, then the external objects flag.</summary>
+    private static byte[] ReadInnerTagExtensions(AssetBinaryReader reader)
+    {
+        if (reader.Asset.ObjectVersionUE5 < ObjectVersionUE5.PROPERTY_TAG_EXTENSION_AND_OVERRIDABLE_SERIALIZATION) return null;
+        long start = reader.BaseStream.Position;
+        var extensions = (EPropertyTagExtension)reader.ReadByte();
+        if (extensions.HasFlag(EPropertyTagExtension.OverridableInformation)) { reader.ReadByte(); reader.ReadBooleanInt(); }
+        if (extensions.HasFlag(EPropertyTagExtension.HasExternalsObjects)) reader.ReadBooleanInt();
+        long length = reader.BaseStream.Position - start;
+        reader.BaseStream.Position = start;
+        return reader.ReadBytes((int)length);
+    }
 
     internal bool ShouldSerializeStructsDifferently = true;
 
@@ -109,6 +128,7 @@ public class ArrayPropertyData : PropertyData<PropertyData[]>
                 fullType = reader.ReadFName();
                 structGUID = reader.ReadGuid();
                 reader.ReadPropertyGuid();
+                InnerTagExtensions = ReadInnerTagExtensions(reader);
             }
             else
             {
@@ -262,6 +282,7 @@ public class ArrayPropertyData : PropertyData<PropertyData[]>
                 writer.Write(fullType);
                 if (writer.Asset.ObjectVersion >= ObjectVersion.VER_UE4_STRUCT_GUID_IN_PROPERTY_TAG) writer.Write(DummyStruct.StructGUID);
                 if (writer.Asset.ObjectVersion >= ObjectVersion.VER_UE4_PROPERTY_GUID_IN_PROPERTY_TAG) writer.Write((byte)0);
+                if (writer.Asset.ObjectVersionUE5 >= ObjectVersionUE5.PROPERTY_TAG_EXTENSION_AND_OVERRIDABLE_SERIALIZATION) writer.Write(InnerTagExtensions ?? new byte[1]);
             }
 
             for (int i = 0; i < Value.Length; i++)
@@ -276,7 +297,8 @@ public class ArrayPropertyData : PropertyData<PropertyData[]>
                 int fullLen = (int)writer.BaseStream.Position - lengthLoc;
                 int newLoc = (int)writer.BaseStream.Position;
                 writer.Seek(lengthLoc, SeekOrigin.Begin);
-                writer.Write(fullLen - 32 - (includeHeader ? 1 : 0));
+                int extensionLength = writer.Asset.ObjectVersionUE5 >= ObjectVersionUE5.PROPERTY_TAG_EXTENSION_AND_OVERRIDABLE_SERIALIZATION ? (InnerTagExtensions?.Length ?? 1) : 0;
+                writer.Write(fullLen - 32 - (includeHeader ? 1 : 0) - extensionLength);
                 writer.Seek(newLoc, SeekOrigin.Begin);
             }
         }

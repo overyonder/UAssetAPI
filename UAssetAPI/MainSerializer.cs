@@ -380,14 +380,14 @@ namespace UAssetAPI
                 {
                     data.Read(reader, includeHeader, leng);
                 }
-                catch (Exception)
+                catch (Exception ex)
                 {
                     // if asset is unversioned, bubble the error up to make the whole export fail
                     // because unversioned headers aren't properly reconstructed currently
                     if (data is StructPropertyData && !reader.Asset.HasUnversionedProperties)
                     {
                         reader.BaseStream.Position = posBefore;
-                        data = new RawStructPropertyData(name);
+                        data = new RawStructPropertyData(name) { FailureReason = $"{ex.GetType().Name}: {ex.Message.Split('\n')[0]}" };
                         data.PropertyTagFlags = propertyTagFlags;
                         data.Ancestry.Initialize(ancestry, parentName, parentModulePath);
                         data.ArrayIndex = ArrayIndex;

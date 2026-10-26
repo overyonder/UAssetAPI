@@ -13,6 +13,9 @@ public class RawStructPropertyData : PropertyData<byte[]>
     public bool SerializeNone = true;
     [JsonProperty]
     public Guid StructGUID = Guid.Empty; // usually set to 0
+    /// <summary>Why the struct's own reader failed, when this raw copy is its fallback.</summary>
+    [JsonProperty]
+    public string FailureReason = null;
 
     public RawStructPropertyData(FName name) : base(name) { }
 
