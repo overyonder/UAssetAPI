@@ -20,6 +20,7 @@ public enum NativeClassTail
     StaticMeshComponent = 4,
     Actor = 8,
     BlueprintCore = 16,
+    NiagaraTexture = 32,
 }
 
 /// <summary>One LOD's per-component data (StaticMeshComponent.cpp operator&lt;&lt;(FArchive&amp;, FStaticMeshComponentLODInfo&amp;)).</summary>
@@ -56,6 +57,8 @@ public class NativeClassTailData
     /// <summary>Blueprint.cpp UBlueprintCore::Serialize: bLegacyGeneratedClassIsAuthoritative, read and discarded from
     /// packages before FFrameworkObjectVersion::BlueprintGeneratedClassIsAlwaysAuthoritative.</summary>
     [JsonProperty] public bool? LegacyGeneratedClassIsAuthoritative;
+    /// <summary>NiagaraDataInterfaceTexture.cpp: StreamData, the texture's stream data array.</summary>
+    [JsonProperty] public byte[] NiagaraTextureStreamData;
 }
 
 public class FSimpleMemberReferenceData
@@ -125,6 +128,12 @@ public static class NativeClassTails
             }
             if (tails.HasFlag(NativeClassTail.BlueprintCore) && asset.GetCustomVersion<FFrameworkObjectVersion>() < FFrameworkObjectVersion.BlueprintGeneratedClassIsAlwaysAuthoritative)
                 data.LegacyGeneratedClassIsAuthoritative = reader.ReadBooleanInt();
+            if (tails.HasFlag(NativeClassTail.NiagaraTexture) && asset.GetCustomVersion<FNiagaraCustomVersion>() >= FNiagaraCustomVersion.TextureDataInterfaceUsesCustomSerialize)
+            {
+                int n = reader.ReadInt32();
+                if (n < 0 || n > stream.Length - stream.Position) return;
+                data.NiagaraTextureStreamData = reader.ReadBytes(n);
+            }
             if (stream.Position != stream.Length) return;
             export.NativeTails = data;
             export.Extras = Array.Empty<byte>();
@@ -161,6 +170,7 @@ public static class NativeClassTails
             if (data.ActorIsCooked.Value) writer.Write(data.ActorLabel);
         }
         if (data.LegacyGeneratedClassIsAuthoritative != null) writer.WriteBooleanInt(data.LegacyGeneratedClassIsAuthoritative.Value);
+        if (data.NiagaraTextureStreamData != null) { writer.Write(data.NiagaraTextureStreamData.Length); writer.Write(data.NiagaraTextureStreamData); }
     }
 
     static int BoundsSize(UAsset asset) => asset.ObjectVersionUE5 >= ObjectVersionUE5.LARGE_WORLD_COORDINATES ? 7 * 8 : 7 * 4;

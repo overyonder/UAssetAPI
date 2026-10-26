@@ -903,6 +903,7 @@ internal static class NativeClassTailTable
         [("/Script/Niagara", "NiagaraActor")] = NativeClassTail.Actor,
         [("/Script/Niagara", "NiagaraComponent")] = NativeClassTail.ActorComponent | NativeClassTail.SceneComponent,
         [("/Script/Niagara", "NiagaraCullProxyComponent")] = NativeClassTail.ActorComponent | NativeClassTail.SceneComponent,
+        [("/Script/Niagara", "NiagaraDataInterfaceTexture")] = NativeClassTail.NiagaraTexture,
         [("/Script/Niagara", "NiagaraEditorPreviewActor")] = NativeClassTail.Actor,
         [("/Script/Niagara", "NiagaraLensEffectBase")] = NativeClassTail.Actor,
         [("/Script/Niagara", "NiagaraPerfBaselineActor")] = NativeClassTail.Actor,
