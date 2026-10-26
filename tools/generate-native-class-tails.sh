@@ -2,7 +2,7 @@
 # Generates UAssetAPI/ExportTypes/NativeClassTails.g.cs from an Unreal Engine source tree.
 # Usage: tools/generate-native-class-tails.sh <Engine directory> [extra source roots...]
 #
-# Lists every native class descending from AActor, UActorComponent, UBlueprintCore, UNiagaraDataInterfaceTexture, UWorld or UWorldPartition, with its module (the nearest *.Build.cs) and
+# Lists every native class descending from AActor, UActorComponent, UBlueprintCore, UNiagaraDataInterfaceTexture, UWorld, UWorldPartition, UMaterialInterface, UMaterialInterfaceEditorOnlyData or UBodySetup, with its module (the nearest *.Build.cs) and
 # which of these serializers, each run after the tagged properties and base class first, write persistent data for it:
 #   UActorComponent      Components/ActorComponent.cpp: UCSModifiedProperties
 #   USceneComponent      Components/SceneComponent.cpp: cooked static bounds, when bComputeBoundsOnceForGame
@@ -15,6 +15,13 @@
 #   UWorld               World.cpp: PersistentLevel, ExtraReferencedObjects and the persistent StreamingLevels
 #   UWorldPartition      WorldPartition.cpp: the cooked flag and, when cooked, StreamingPolicy, from
 #                        FUE5MainStreamObjectVersion::WorldPartitionSerializeStreamingPolicyOnCook
+#   UMaterialInterface   MaterialInterface.cpp: the saved-cached-expression-data flag, from
+#                        FUE5ReleaseStreamObjectVersion::MaterialInterfaceSavedCachedData
+#   UMaterialInstance    MaterialInstance.cpp: the saved-cached-data flag, and the inline shader map count when
+#                        bHasStaticPermutationResource
+#   UMaterialInterfaceEditorOnlyData MaterialInterface.cpp: the saved-cached-expression-data flag
+#   UBodySetup           PhysicsEngine/BodySetup.cpp: BodySetupGuid, the cooked flag, and the level-set implicit
+#                        objects saved between two Fortnite versions
 # Other serializers of these classes in 5.8.3 save nothing after the tagged properties outside migration or cooking,
 # but some still read data that older engines saved; those reads are added as audits of older packages find them.
 # Recheck the Serialize overrides of these classes when regenerating for a new engine release.
@@ -41,6 +48,10 @@ awk -F'\t' '{p[$1]=$2; f[$1]=$3}
         if (x=="UNiagaraDataInterfaceTexture") flags="NiagaraTexture|" flags
         if (x=="UWorld") flags="World|" flags
         if (x=="UWorldPartition") flags="WorldPartition|" flags
+        if (x=="UMaterialInstance") flags="MaterialInstance|" flags
+        if (x=="UMaterialInterface") flags="MaterialInterface|" flags
+        if (x=="UMaterialInterfaceEditorOnlyData") flags="MaterialEditorOnlyData|" flags
+        if (x=="UBodySetup") flags="BodySetup|" flags
         x = (x in p) ? p[x] : ""
       }
       if (flags == "") continue

@@ -23,6 +23,10 @@ public enum NativeClassTail
     NiagaraTexture = 32,
     World = 64,
     WorldPartition = 128,
+    MaterialInstance = 256,
+    MaterialEditorOnlyData = 512,
+    BodySetup = 1024,
+    MaterialInterface = 2048,
 }
 
 /// <summary>One LOD's per-component data (StaticMeshComponent.cpp operator&lt;&lt;(FArchive&amp;, FStaticMeshComponentLODInfo&amp;)).</summary>
@@ -68,6 +72,19 @@ public class NativeClassTailData
     /// <summary>WorldPartition.cpp UWorldPartition::Serialize: whether it was cooked, and then its streaming policy.</summary>
     [JsonProperty] public bool? WorldPartitionIsCooked;
     [JsonProperty] public FPackageIndex WorldPartitionStreamingPolicy;
+    /// <summary>MaterialInterface.cpp UMaterialInterface::Serialize: whether cooked cached expression data follows.</summary>
+    [JsonProperty] public bool? MaterialInterfaceSavedCachedExpressionData;
+    /// <summary>MaterialInstance.cpp: whether cooked cached data follows (only cooking sets it).</summary>
+    [JsonProperty] public bool? MaterialInstanceSavedCachedData;
+    /// <summary>Material.cpp SerializeInlineShaderMaps: the count of inline shader maps, zero outside cooking.</summary>
+    [JsonProperty] public int? MaterialInstanceInlineShaderMaps;
+    /// <summary>MaterialInterface.cpp UMaterialInterfaceEditorOnlyData: whether cooked cached expression data follows.</summary>
+    [JsonProperty] public bool? MaterialSavedCachedExpressionData;
+    /// <summary>PhysicsEngine/BodySetup.cpp: the body setup's GUID, whether cooked collision data follows, and the
+    /// level-set implicit object count saved between LevelsetSerializationSupportForBodySetup and DisableLevelset_v14_10.</summary>
+    [JsonProperty] public Guid? BodySetupGuid;
+    [JsonProperty] public bool? BodySetupIsCooked;
+    [JsonProperty] public int? BodySetupImplicitObjects;
 }
 
 public class FSimpleMemberReferenceData
@@ -85,7 +102,11 @@ public static class NativeClassTails
     static readonly Guid FortniteMainGuid = UAPUtils.GUID(0x601D1886, 0xAC644F84, 0xAA16D3DE, 0x0DEAC7D6);
     const int ActorComponentUCSModifiedPropertiesSparseStorage = 4, SerializeSceneComponentStaticBounds = 2,
         SerializeActorLabelInCookedBuilds = 4, IncreaseNormalPrecision = 26, MeshPaintTextureUsesEditorOnly = 166,
-        WorldPartitionSerializeStreamingPolicyOnCook = 74;
+        WorldPartitionSerializeStreamingPolicyOnCook = 74, MaterialSavedCachedData = 36, MaterialAttributeLayerParameters = 21,
+        LevelsetSerializationSupportForBodySetup = 42, DisableLevelset_v14_10 = 1;
+
+    static bool BoolProperty(NormalExport export, string name) =>
+        export.Data?.Find(p => p.Name?.ToString() == name) is PropertyTypes.Objects.BoolPropertyData b && b.Value;
     static readonly Guid UE5MainStreamGuid = UAPUtils.GUID(0x697DD581, 0xE64F41AB, 0xAA4A51EC, 0xBEB7B628);
 
     static List<FPackageIndex> ReadIndices(AssetBinaryReader reader, Stream stream)
@@ -166,6 +187,44 @@ public static class NativeClassTails
                 data.WorldPartitionIsCooked = reader.ReadBooleanInt();
                 if (data.WorldPartitionIsCooked == true) data.WorldPartitionStreamingPolicy = new FPackageIndex(reader);
             }
+            // cooked cached data, legacy static parameters and inline shader maps aren't decoded: such a tail keeps its bytes
+            if (tails.HasFlag(NativeClassTail.MaterialInterface) && asset.GetCustomVersion<FUE5ReleaseStreamObjectVersion>() >= FUE5ReleaseStreamObjectVersion.MaterialInterfaceSavedCachedData)
+            {
+                data.MaterialInterfaceSavedCachedExpressionData = reader.ReadBooleanInt();
+                if (data.MaterialInterfaceSavedCachedExpressionData == true) return;
+            }
+            if (tails.HasFlag(NativeClassTail.MaterialInstance))
+            {
+                if (asset.GetCustomVersion(UE5MainStreamGuid) >= MaterialSavedCachedData)
+                {
+                    data.MaterialInstanceSavedCachedData = reader.ReadBooleanInt();
+                    if (data.MaterialInstanceSavedCachedData == true) return;
+                }
+                if (BoolProperty(normal, "bHasStaticPermutationResource") && asset.ObjectVersion >= ObjectVersion.VER_UE4_PURGED_FMATERIAL_COMPILE_OUTPUTS)
+                {
+                    if (asset.GetCustomVersion(RenderingGuid) < MaterialAttributeLayerParameters) return;
+                    data.MaterialInstanceInlineShaderMaps = reader.ReadInt32();
+                    if (data.MaterialInstanceInlineShaderMaps != 0) return;
+                }
+                if (asset.ObjectVersion >= ObjectVersion.VER_UE4_MATERIAL_INSTANCE_BASE_PROPERTY_OVERRIDES && asset.ObjectVersion < ObjectVersion.VER_UE4_FIX_MATERIAL_PROPERTY_OVERRIDE_SERIALIZE) return;
+            }
+            if (tails.HasFlag(NativeClassTail.MaterialEditorOnlyData))
+            {
+                data.MaterialSavedCachedExpressionData = reader.ReadBooleanInt();
+                if (data.MaterialSavedCachedExpressionData == true) return;
+            }
+            // cooked collision data and level-set implicit objects aren't decoded: such a tail keeps its bytes
+            if (tails.HasFlag(NativeClassTail.BodySetup))
+            {
+                data.BodySetupGuid = reader.ReadGuid();
+                data.BodySetupIsCooked = reader.ReadBooleanInt();
+                if (data.BodySetupIsCooked == true) return;
+                if (asset.GetCustomVersion(FortniteMainGuid) >= LevelsetSerializationSupportForBodySetup && asset.GetCustomVersion(FortniteReleaseGuid) < DisableLevelset_v14_10)
+                {
+                    data.BodySetupImplicitObjects = reader.ReadInt32();
+                    if (data.BodySetupImplicitObjects != 0) return;
+                }
+            }
             if (stream.Position != stream.Length) return;
             export.NativeTails = data;
             export.Extras = Array.Empty<byte>();
@@ -212,6 +271,16 @@ public static class NativeClassTails
         {
             writer.WriteBooleanInt(data.WorldPartitionIsCooked.Value);
             if (data.WorldPartitionIsCooked.Value) data.WorldPartitionStreamingPolicy.Write(writer);
+        }
+        if (data.MaterialInterfaceSavedCachedExpressionData != null) writer.WriteBooleanInt(data.MaterialInterfaceSavedCachedExpressionData.Value);
+        if (data.MaterialInstanceSavedCachedData != null) writer.WriteBooleanInt(data.MaterialInstanceSavedCachedData.Value);
+        if (data.MaterialInstanceInlineShaderMaps != null) writer.Write(data.MaterialInstanceInlineShaderMaps.Value);
+        if (data.MaterialSavedCachedExpressionData != null) writer.WriteBooleanInt(data.MaterialSavedCachedExpressionData.Value);
+        if (data.BodySetupGuid != null)
+        {
+            writer.Write(data.BodySetupGuid.Value);
+            writer.WriteBooleanInt(data.BodySetupIsCooked.Value);
+            if (data.BodySetupImplicitObjects != null) writer.Write(data.BodySetupImplicitObjects.Value);
         }
     }
 
