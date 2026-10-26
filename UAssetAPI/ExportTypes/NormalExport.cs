@@ -206,11 +206,13 @@ namespace UAssetAPI.ExportTypes
             ObjectGuid = null;
             if (!this.ObjectFlags.HasFlag(EObjectFlags.RF_ClassDefaultObject) && reader.ReadBooleanInt()) ObjectGuid = reader.ReadGuid();
 
-            if (WritesSparseClassData(reader.Asset as UAsset, out bool serializable))
+            if (WritesSparseClassData(reader.Asset as UAsset, out bool? serializable))
             {
                 SparseClassDataStruct = new FPackageIndex(reader);
+                // a class exported after its default object isn't read yet; the data is then present exactly when bytes remain
+                serializable ??= reader.BaseStream.Position < SerialOffset + SerialSize;
                 // the data follows only for a struct that overrides the archetype's, in a class that serializes it
-                if (!SparseClassDataStruct.IsNull() && serializable)
+                if (!SparseClassDataStruct.IsNull() && serializable.Value)
                 {
                     SparseClassData = new List<PropertyData>();
                     FName structName = SparseClassDataStruct.IsExport() ? SparseClassDataStruct.ToExport(reader.Asset).ObjectName : SparseClassDataStruct.ToImport(reader.Asset).ObjectName;
@@ -227,7 +229,7 @@ namespace UAssetAPI.ExportTypes
         /// FUE5MainStreamObjectVersion::SparseClassDataStructSerialization. <paramref name="serializable"/> is the class's
         /// bIsSparseClassDataSerializable, which an editor package needs for the data itself; a cooked package always writes it.
         /// </summary>
-        bool WritesSparseClassData(UAsset asset, out bool serializable)
+        bool WritesSparseClassData(UAsset asset, out bool? serializable)
         {
             serializable = false;
             if (asset == null || !ObjectFlags.HasFlag(EObjectFlags.RF_ClassDefaultObject) || ClassIndex == null || !ClassIndex.IsExport()) return false;
@@ -235,8 +237,9 @@ namespace UAssetAPI.ExportTypes
             var cls = ClassIndex.ToExport(asset);
             if (cls?.ClassIndex == null || !cls.ClassIndex.IsImport()) return false;
             if (!DerivesFromBlueprintGeneratedClass(asset, cls.ClassIndex)) return false;
-            serializable = asset.PackageFlags.HasFlag(EPackageFlags.PKG_Cooked)
-                || (cls is NormalExport n && n.Data?.Find(d => d.Name.ToString() == "bIsSparseClassDataSerializable") is BoolPropertyData b && b.Value);
+            if (asset.PackageFlags.HasFlag(EPackageFlags.PKG_Cooked)) serializable = true;
+            else if (cls is NormalExport n && n.Data != null) serializable = n.Data.Find(d => d.Name.ToString() == "bIsSparseClassDataSerializable") is BoolPropertyData b && b.Value;
+            else serializable = null;
             return true;
         }
 
