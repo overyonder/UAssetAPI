@@ -303,6 +303,8 @@ static void Blobs(object v, string cls, string name, string at, string path, Tex
             if (pl.Data?.Length > 0) w.WriteLine($"payload\t{cls}:{pl.Format}\t{pl.Data.Length}\t{name}{at}\t{path}");
             return;
         case string or Enum or ValueType: return;
+        // values that hold no payload but refer back into the package
+        case UAsset or UAssetAPI.UnrealTypes.FName or UAssetAPI.UnrealTypes.FString or UAssetAPI.UnrealTypes.FPackageIndex: return;
         case System.Collections.IDictionary d:
             foreach (System.Collections.DictionaryEntry kv in d) Blobs(kv.Value, cls, name, $"{at}.{kv.Key}", path, w, depth + 1);
             return;
@@ -315,7 +317,7 @@ static void Blobs(object v, string cls, string name, string at, string path, Tex
     if (type.Namespace == null || !type.Namespace.StartsWith("UAssetAPI")) return;
     if (v is UAssetAPI.PropertyTypes.Objects.PropertyData) return; // tagged data is --audit's Walk
     foreach (var f in type.GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance))
-        if (f.IsDefined(typeof(UAssetAPI.JSON.WriteBackCopyAttribute), true)) continue;
+        if (f.IsDefined(typeof(UAssetAPI.JSON.WriteBackCopyAttribute), true) || typeof(UAsset).IsAssignableFrom(f.FieldType)) continue;
         else if (f.GetCustomAttributes(typeof(UAssetAPI.JSON.PayloadFormatAttribute), true).FirstOrDefault() is UAssetAPI.JSON.PayloadFormatAttribute fmt)
         {
             if (f.GetValue(v) is byte[] pb && pb.Length > 0) w.WriteLine($"payload\t{cls}:{fmt.Format}\t{pb.Length}\t{name}{at}.{f.Name}\t{path}");
