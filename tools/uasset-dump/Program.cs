@@ -44,6 +44,12 @@ if (Environment.GetEnvironmentVariable("UASSET_MAPS") is { Length: > 0 } maps)
     foreach (var line in maps.Split(':', StringSplitOptions.RemoveEmptyEntries).SelectMany(File.ReadLines)) { var f = line.Split('\t'); if (f.Length == 4) UAssetAPI.PropertyTypes.Objects.MapPropertyData.AddProjectMapStructTypes(f[0], f[1], f[2], f[3]); }
 // Several can be given, separated by ':'; the first one that defines a schema or enum wins.
 Usmap mappings = null;
+// Each top-level package starts a fresh schema scope, so one package's types never stand in for another project's
+UAsset Load(string path, EngineVersion version, Usmap map, CustomSerializationFlags flags = CustomSerializationFlags.None)
+{
+    map?.BeginAssetScope();
+    return new UAsset(path, version, map, flags);
+}
 foreach (var m in (Environment.GetEnvironmentVariable("UASSET_USMAP") ?? "").Split(':', StringSplitOptions.RemoveEmptyEntries))
 {
     var next = new Usmap(m);
@@ -52,16 +58,18 @@ foreach (var m in (Environment.GetEnvironmentVariable("UASSET_USMAP") ?? "").Spl
     foreach (var kv in next.EnumMap) if (!mappings.EnumMap.ContainsKey(kv.Key)) mappings.EnumMap[kv.Key] = kv.Value;
 }
 
-if (args[0] == "--trace") { try { _ = new UAsset(args[1], EngineVersion.UNKNOWN, mappings); Console.WriteLine("ok"); } catch (Exception ex) { Console.WriteLine(ex.ToString()); } return; }
-if (args[0] == "--failures") { var a = new UAsset(args[1], EngineVersion.UNKNOWN, mappings, CustomSerializationFlags.ReadOnlyStreaming); foreach (var f in a.ExportParseFailures) Console.WriteLine($"{f.ObjectName}\t{f.ClassType}\n{f.ExceptionDetails}"); return; }
+// export-table fields and the tagged properties --text already prints (including a default object's sparse class data)
+HashSet<string> Headers = new() { "ObjectName", "OuterIndex", "ClassIndex", "SuperIndex", "TemplateIndex", "ObjectFlags", "SerialSize", "SerialOffset", "ScriptSerializationStartOffset", "ScriptSerializationEndOffset", "bForcedExport", "bNotForClient", "bNotForServer", "PackageGuid", "IsInheritedInstance", "PackageFlags", "bNotAlwaysLoadedForEditorGame", "bIsAsset", "GeneratePublicHash", "SerializationBeforeSerializationDependencies", "CreateBeforeSerializationDependencies", "SerializationBeforeCreateDependencies", "CreateBeforeCreateDependencies", "PublicExportHash", "Padding", "Extras", "SerializationControl", "Operation", "HasLeadingFourNullBytes", "HasNoTaggedProperties", "SparseClassDataStruct", "SparseClassData" };
+if (args[0] == "--trace") { try { _ = Load(args[1], EngineVersion.UNKNOWN, mappings); Console.WriteLine("ok"); } catch (Exception ex) { Console.WriteLine(ex.ToString()); } return; }
+if (args[0] == "--failures") { var a = Load(args[1], EngineVersion.UNKNOWN, mappings, CustomSerializationFlags.ReadOnlyStreaming); foreach (var f in a.ExportParseFailures) Console.WriteLine($"{f.ObjectName}\t{f.ClassType}\n{f.ExceptionDetails}"); return; }
 // --json <package> <out.json>: every decoded export, for reading a reference asset's graphs, tables and settings
-if (args[0] == "--json") { var a = new UAsset(args[1], EngineVersion.UNKNOWN, mappings, CustomSerializationFlags.ReadOnlyStreaming); File.WriteAllText(args[2], a.SerializeJson(true)); return; }
-if (args[0] == "--text") { var a = new UAsset(args[1], EngineVersion.UNKNOWN, mappings, CustomSerializationFlags.ReadOnlyStreaming); using var w = new StreamWriter(args[2]); TextDump.Write(a, w); return; }
+if (args[0] == "--json") { var a = Load(args[1], EngineVersion.UNKNOWN, mappings, CustomSerializationFlags.ReadOnlyStreaming); File.WriteAllText(args[2], a.SerializeJson(true)); return; }
+if (args[0] == "--text") { var a = Load(args[1], EngineVersion.UNKNOWN, mappings, CustomSerializationFlags.ReadOnlyStreaming); using var w = new StreamWriter(args[2]); TextDump.Write(a, w); return; }
 // --native <package> <out> [export]: per export, everything decoded outside its tagged properties (native class tails,
 // specialized export data, bytecode), as UAssetAPI's JSON without the tagged Data that --text prints
 if (args[0] == "--native")
 {
-    var a = new UAsset(args[1], EngineVersion.UNKNOWN, mappings, CustomSerializationFlags.ReadOnlyStreaming);
+    var a = Load(args[1], EngineVersion.UNKNOWN, mappings, CustomSerializationFlags.ReadOnlyStreaming);
     using var w = new StreamWriter(args[2]);
     WriteNative(a, w, args.Length >= 4 ? args[3] : null);
     return;
@@ -72,7 +80,7 @@ if (args[0] == "--check")
     {
         try
         {
-            var asset = new UAsset(path, EngineVersion.UNKNOWN, mappings);
+            var asset = Load(path, EngineVersion.UNKNOWN, mappings);
             int raw = asset.Exports.Count(e => e is RawExport && !(e is RigHierarchyExport rh && rh.FullyParsed) && !(e is RigVMExport v && v.FullyParsed));
             var original = File.ReadAllBytes(path);
             var written = asset.WriteData().ToArray();
@@ -96,7 +104,7 @@ if (args[0] == "--classes")
     {
         try
         {
-            var asset = new UAsset(path, EngineVersion.UNKNOWN, mappings, CustomSerializationFlags.SkipLoadingExports | CustomSerializationFlags.ReadOnlyStreaming);
+            var asset = Load(path, EngineVersion.UNKNOWN, mappings, CustomSerializationFlags.SkipLoadingExports | CustomSerializationFlags.ReadOnlyStreaming);
             foreach (var g in asset.Exports.GroupBy(e => e.GetExportClassType()?.Value?.Value ?? "?")) Console.WriteLine($"{g.Key}\t{g.Count()}\t{path}");
         }
         catch (Exception ex) { Console.WriteLine($"!fail:{ex.GetType().Name}: {ex.Message.Split('\n')[0]}\t{path}"); }
@@ -111,7 +119,7 @@ if (args[0] == "--audit")
     foreach (var path in args.Skip(1))
     {
         UAsset asset;
-        try { asset = new UAsset(path, EngineVersion.UNKNOWN, mappings, CustomSerializationFlags.ReadOnlyStreaming); }
+        try { asset = Load(path, EngineVersion.UNKNOWN, mappings, CustomSerializationFlags.ReadOnlyStreaming); }
         catch (Exception ex) { Console.WriteLine($"fail\t{ex.GetType().Name}\t0\t{ex.Message.Split('\n')[0]}\t{path}"); continue; }
         Audit(asset, path, Console.Out);
         Console.WriteLine($"done\t-\t{asset.Exports.Count}\t-\t{path}");
@@ -128,7 +136,7 @@ if (args[0] == "--dataset")
     foreach (var path in args.Skip(3))
     {
         UAsset asset;
-        try { asset = new UAsset(path, EngineVersion.UNKNOWN, mappings, CustomSerializationFlags.ReadOnlyStreaming); }
+        try { asset = Load(path, EngineVersion.UNKNOWN, mappings, CustomSerializationFlags.ReadOnlyStreaming); }
         catch (Exception ex) { Console.WriteLine($"fail\t{ex.GetType().Name}\t0\t{ex.Message.Split('\n')[0]}\t{path}"); continue; }
         try
         {
@@ -145,7 +153,7 @@ if (args[0] == "--dataset")
             Console.WriteLine($"index\t{path}\t{text}\t{native}\t{asset.Exports.Count}\t{count}");
         }
         // a package that runs out of the worker's heap is retried alone with a larger one
-        catch (Exception ex) { Console.WriteLine($"fail\t{ex.GetType().Name}\t0\t{ex.Message.Split('\n')[0]}\t{path}"); }
+        catch (Exception ex) { Console.WriteLine($"fail\t{ex.GetType().Name}\t0\t{ex.Message.Split('\n')[0]}\t{path}"); if (Environment.GetEnvironmentVariable("UASSET_DETAILS") != null) Console.Error.WriteLine(ex); }
         asset = null;
     }
     return;
@@ -169,13 +177,13 @@ static void Walk(object o, string cls, string name, string path, TextWriter w)
 }
 
 // --scriptspan <package>...: per class default object, the export map's serial size and script serialization start and end
-if (args[0] == "--scriptspan") { foreach (var path in args.Skip(1)) { var a = new UAsset(path, EngineVersion.UNKNOWN, mappings, CustomSerializationFlags.SkipLoadingExports | CustomSerializationFlags.ReadOnlyStreaming); foreach (var e in a.Exports.Where(e => e.ObjectFlags.HasFlag(EObjectFlags.RF_ClassDefaultObject))) Console.WriteLine($"{e.SerialSize}\t{e.ScriptSerializationStartOffset}\t{e.ScriptSerializationEndOffset}\t{e.ObjectName}\t{path}"); } return; }
+if (args[0] == "--scriptspan") { foreach (var path in args.Skip(1)) { var a = Load(path, EngineVersion.UNKNOWN, mappings, CustomSerializationFlags.SkipLoadingExports | CustomSerializationFlags.ReadOnlyStreaming); foreach (var e in a.Exports.Where(e => e.ObjectFlags.HasFlag(EObjectFlags.RF_ClassDefaultObject))) Console.WriteLine($"{e.SerialSize}\t{e.ScriptSerializationStartOffset}\t{e.ScriptSerializationEndOffset}\t{e.ObjectName}\t{path}"); } return; }
 // --enum <type>: every member of a UAssetAPI enum with its compiled value, for comparison with the engine's own lists
 if (args[0] == "--enum") { var t = typeof(UAsset).Assembly.GetTypes().First(t => t.Name == args[1]); foreach (var v in Enum.GetValues(t)) Console.WriteLine($"{Convert.ToInt64(v)} {v}"); return; }
 // --versions <package>: object versions, flags and every custom version the package records
-if (args[0] == "--versions") { var a = new UAsset(args[1], EngineVersion.UNKNOWN, mappings, CustomSerializationFlags.SkipLoadingExports | CustomSerializationFlags.ReadOnlyStreaming); Console.WriteLine($"legacy {a.LegacyFileVersion}\tUE4 {a.ObjectVersion}\tUE5 {a.ObjectVersionUE5}\tflags {a.PackageFlags}\tfilterEditorOnly {a.IsFilterEditorOnly}\tunversioned {a.HasUnversionedProperties}"); foreach (var c in a.CustomVersionContainer) Console.WriteLine($"{c.FriendlyName ?? c.Key.ToString()}\t{c.Version}"); return; }
+if (args[0] == "--versions") { var a = Load(args[1], EngineVersion.UNKNOWN, mappings, CustomSerializationFlags.SkipLoadingExports | CustomSerializationFlags.ReadOnlyStreaming); Console.WriteLine($"legacy {a.LegacyFileVersion}\tUE4 {a.ObjectVersion}\tUE5 {a.ObjectVersionUE5}\tflags {a.PackageFlags}\tfilterEditorOnly {a.IsFilterEditorOnly}\tunversioned {a.HasUnversionedProperties}"); foreach (var c in a.CustomVersionContainer) Console.WriteLine($"{c.FriendlyName ?? c.Key.ToString()}\t{c.Version}"); return; }
 // --cdos <package>...: per class default object, its decoded type, leftover bytes, and the native tails decoded after its properties
-if (args[0] == "--cdos") { foreach (var path in args.Skip(1)) { try { var a = new UAsset(path, EngineVersion.UNKNOWN, mappings); foreach (var e in a.Exports.Where(e => e.ObjectFlags.HasFlag(EObjectFlags.RF_ClassDefaultObject))) Console.WriteLine($"{e.GetType().Name}\t{e.Extras?.Length ?? -1}\t{(e.Extras == null ? "" : Convert.ToHexString(e.Extras))}\t{e.NativeTails?.Tails.ToString() ?? "-"}\t{e.ObjectName}\t{path}"); } catch (Exception ex) { Console.WriteLine($"fail\t{ex.Message.Split('\n')[0]}\t{path}"); } } return; }
+if (args[0] == "--cdos") { foreach (var path in args.Skip(1)) { try { var a = Load(path, EngineVersion.UNKNOWN, mappings); foreach (var e in a.Exports.Where(e => e.ObjectFlags.HasFlag(EObjectFlags.RF_ClassDefaultObject))) Console.WriteLine($"{e.GetType().Name}\t{e.Extras?.Length ?? -1}\t{(e.Extras == null ? "" : Convert.ToHexString(e.Extras))}\t{e.NativeTails?.Tails.ToString() ?? "-"}\t{e.ObjectName}\t{path}"); } catch (Exception ex) { Console.WriteLine($"fail\t{ex.Message.Split('\n')[0]}\t{path}"); } } return; }
 // --exports <package>: index, decoded type, class, name and serial size of every export
 // --names <package>: the name map, one entry per line
 // --registry: every struct type the decoder reads with its own serializer
@@ -202,7 +210,7 @@ if (args[0] == "--usage")
     {
         if (path.Length == 0) continue;
         UAsset a;
-        try { a = new UAsset(path, EngineVersion.UNKNOWN, null, CustomSerializationFlags.SkipLoadingExports | CustomSerializationFlags.ReadOnlyStreaming); }
+        try { a = Load(path, EngineVersion.UNKNOWN, null, CustomSerializationFlags.SkipLoadingExports | CustomSerializationFlags.ReadOnlyStreaming); }
         catch (Exception ex) { Console.WriteLine($"fail\t{ex.GetType().Name}\t{ex.Message.Split('\n')[0]}\t{path}"); continue; }
         var seen = new HashSet<(string, string, string)>();
         foreach (var imp in a.Imports)
@@ -220,14 +228,14 @@ if (args[0] == "--usage")
     foreach (var (k, v) in counts.OrderBy(kv => kv.Key)) Console.WriteLine($"{k.Kind}\t{k.Module}\t{k.Name}\t{v.Count}\t{v.Example}");
     return;
 }
-if (args[0] == "--names") { var a = new UAsset(args[1], EngineVersion.UNKNOWN, mappings, CustomSerializationFlags.SkipLoadingExports | CustomSerializationFlags.ReadOnlyStreaming); foreach (var n in a.GetNameMapIndexList()) Console.WriteLine(n.Value); return; }
-if (args[0] == "--extras") { var a = new UAsset(args[1], EngineVersion.UNKNOWN, mappings); foreach (var e in a.Exports.Where(e => args.Length < 3 || e.ObjectName.ToString() == args[2])) if (e.Extras?.Length > 0) Console.WriteLine($"{e.ObjectName}\t{e.GetType().Name}\t{e.SerialOffset}\t{e.SerialSize}\t{e.ScriptSerializationStartOffset}\t{e.ScriptSerializationEndOffset}\t{e.NativeTailFailure}\t{Convert.ToHexString(e.Extras.Length > 64 && args.Length < 4 ? e.Extras[..64] : e.Extras)}"); return; }
-if (args[0] == "--exports") { var a = new UAsset(args[1], EngineVersion.UNKNOWN, mappings); for (int i = 0; i < a.Exports.Count; i++) { var e = a.Exports[i]; Console.WriteLine($"{i}\t{e.GetType().Name}\t{e.GetExportClassType()?.Value?.Value}\t{e.ObjectName}\t{e.SerialSize}"); } return; }
-if (args[0] == "--sections") { var a = new UAsset(args[1], EngineVersion.UNKNOWN, mappings, CustomSerializationFlags.SkipLoadingExports | CustomSerializationFlags.ReadOnlyStreaming); foreach (var fi in typeof(UAsset).GetFields(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic).Where(f => f.Name.EndsWith("Offset") || f.Name.EndsWith("Count"))) Console.WriteLine($"{fi.Name}\t{fi.GetValue(a)}"); return; }
-if (args[0] == "--write") { File.WriteAllBytes(args[2], new UAsset(args[1], EngineVersion.UNKNOWN, mappings).WriteData().ToArray()); return; }
+if (args[0] == "--names") { var a = Load(args[1], EngineVersion.UNKNOWN, mappings, CustomSerializationFlags.SkipLoadingExports | CustomSerializationFlags.ReadOnlyStreaming); foreach (var n in a.GetNameMapIndexList()) Console.WriteLine(n.Value); return; }
+if (args[0] == "--extras") { var a = Load(args[1], EngineVersion.UNKNOWN, mappings); foreach (var e in a.Exports.Where(e => args.Length < 3 || e.ObjectName.ToString() == args[2])) if (e.Extras?.Length > 0) Console.WriteLine($"{e.ObjectName}\t{e.GetType().Name}\t{e.SerialOffset}\t{e.SerialSize}\t{e.ScriptSerializationStartOffset}\t{e.ScriptSerializationEndOffset}\t{e.NativeTailFailure}\t{Convert.ToHexString(e.Extras.Length > 64 && args.Length < 4 ? e.Extras[..64] : e.Extras)}"); return; }
+if (args[0] == "--exports") { var a = Load(args[1], EngineVersion.UNKNOWN, mappings); for (int i = 0; i < a.Exports.Count; i++) { var e = a.Exports[i]; Console.WriteLine($"{i}\t{e.GetType().Name}\t{e.GetExportClassType()?.Value?.Value}\t{e.ObjectName}\t{e.SerialSize}"); } return; }
+if (args[0] == "--sections") { var a = Load(args[1], EngineVersion.UNKNOWN, mappings, CustomSerializationFlags.SkipLoadingExports | CustomSerializationFlags.ReadOnlyStreaming); foreach (var fi in typeof(UAsset).GetFields(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic).Where(f => f.Name.EndsWith("Offset") || f.Name.EndsWith("Count"))) Console.WriteLine($"{fi.Name}\t{fi.GetValue(a)}"); return; }
+if (args[0] == "--write") { File.WriteAllBytes(args[2], Load(args[1], EngineVersion.UNKNOWN, mappings).WriteData().ToArray()); return; }
 
 var version = args.Length > 1 ? Enum.Parse<EngineVersion>(args[1]) : EngineVersion.UNKNOWN;
-Console.Out.Write(new UAsset(args[0], version, mappings).SerializeJson(true));
+Console.Out.Write(Load(args[0], version, mappings).SerializeJson(true));
 
 void Audit(UAsset asset, string path, TextWriter o)
 {
@@ -266,6 +274,7 @@ void Audit(UAsset asset, string path, TextWriter o)
     }
 }
 
+
 bool WriteNative(UAsset a, TextWriter w, string only, Newtonsoft.Json.JsonConverter payloads = null)
 {
     // one compact JSON line per export after its header line; the tagged properties are --text's, so they're detached
@@ -279,17 +288,45 @@ bool WriteNative(UAsset a, TextWriter w, string only, Newtonsoft.Json.JsonConver
         if (only != null && e.ObjectName.ToString() != only) continue;
         var data = (e as NormalExport)?.Data;
         if (e is NormalExport detach) detach.Data = null;
-        Newtonsoft.Json.Linq.JObject o;
-        try { o = Newtonsoft.Json.Linq.JObject.FromObject(e, serializer); }
-        finally { if (e is NormalExport attach) attach.Data = data; }
-        foreach (var header in new[] { "ObjectName", "OuterIndex", "ClassIndex", "SuperIndex", "TemplateIndex", "ObjectFlags", "SerialSize", "SerialOffset", "ScriptSerializationStartOffset", "ScriptSerializationEndOffset", "bForcedExport", "bNotForClient", "bNotForServer", "PackageGuid", "IsInheritedInstance", "PackageFlags", "bNotAlwaysLoadedForEditorGame", "bIsAsset", "GeneratePublicHash", "SerializationBeforeSerializationDependencies", "CreateBeforeSerializationDependencies", "SerializationBeforeCreateDependencies", "CreateBeforeCreateDependencies", "PublicExportHash", "Padding", "Extras", "SerializationControl", "Operation", "HasLeadingFourNullBytes", "HasNoTaggedProperties" })
-            o.Remove(header);
-        foreach (var p in o.Properties().ToList()) if (p.Value is Newtonsoft.Json.Linq.JArray arr && arr.Count == 0) p.Remove();
-        if (!o.HasValues) continue;
-        any = true;
-        w.WriteLine($"#{i + 1} {e.GetExportClassType()?.Value?.Value} {e.ObjectName}");
-        o.WriteTo(new Newtonsoft.Json.JsonTextWriter(w) { Formatting = Newtonsoft.Json.Formatting.None, CloseOutput = false });
-        w.WriteLine();
+        // serialized to a temporary file and copied token by token, so a mesh's index arrays never become a JToken tree
+        string tmp = Path.GetTempFileName();
+        try
+        {
+            using (var tw = new StreamWriter(tmp)) try { serializer.Serialize(new Newtonsoft.Json.JsonTextWriter(tw) { Formatting = Newtonsoft.Json.Formatting.None }, e); }
+                finally { if (e is NormalExport attach) attach.Data = data; }
+            using var tr = new StreamReader(tmp);
+            var r = new Newtonsoft.Json.JsonTextReader(tr) { FloatParseHandling = Newtonsoft.Json.FloatParseHandling.Double, DateParseHandling = Newtonsoft.Json.DateParseHandling.None };
+            Newtonsoft.Json.JsonTextWriter jw = null;
+            if (!r.Read() || r.TokenType != Newtonsoft.Json.JsonToken.StartObject) continue;
+            while (r.Read() && r.TokenType == Newtonsoft.Json.JsonToken.PropertyName)
+            {
+                string name = (string)r.Value;
+                if (!r.Read()) break;
+                if (Headers.Contains(name)) { r.Skip(); continue; }
+                bool emptyArray = false;
+                if (r.TokenType == Newtonsoft.Json.JsonToken.StartArray)
+                {
+                    if (!r.Read()) break;
+                    emptyArray = r.TokenType == Newtonsoft.Json.JsonToken.EndArray;
+                    if (emptyArray) continue;
+                    Open(); jw.WritePropertyName(name); jw.WriteStartArray();
+                    while (r.TokenType != Newtonsoft.Json.JsonToken.EndArray) { jw.WriteToken(r, true); r.Read(); }
+                    jw.WriteEndArray();
+                    continue;
+                }
+                Open(); jw.WritePropertyName(name); jw.WriteToken(r, true);
+            }
+            if (jw != null) { jw.WriteEndObject(); jw.Flush(); w.WriteLine(); any = true; }
+
+            void Open()
+            {
+                if (jw != null) return;
+                w.WriteLine($"#{i + 1} {e.GetExportClassType()?.Value?.Value} {e.ObjectName}");
+                jw = new Newtonsoft.Json.JsonTextWriter(w) { Formatting = Newtonsoft.Json.Formatting.None, CloseOutput = false };
+                jw.WriteStartObject();
+            }
+        }
+        finally { File.Delete(tmp); }
     }
     return any;
 }
