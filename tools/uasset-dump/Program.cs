@@ -10,6 +10,8 @@ using UAssetAPI.ExportTypes;
 using UAssetAPI.UnrealTypes;
 using UAssetAPI.Unversioned;
 
+using var coverageSummary = new CoverageWarningSummary();
+
 // UASSET_USMAP names a .usmap whose native schemas resolve types that older property tags leave out
 // UASSET_PARENTS names a TSV of project C++ class and parent, read from their UCLASS declarations, for classes no
 // mappings describe
@@ -48,7 +50,12 @@ Usmap mappings = null;
 UAsset Load(string path, EngineVersion version, Usmap map, CustomSerializationFlags flags = CustomSerializationFlags.None)
 {
     map?.BeginAssetScope();
-    return new UAsset(path, version, map, flags);
+    try { return new UAsset(path, version, map, flags); }
+    catch (Exception ex)
+    {
+        coverageSummary.Warnings.Add("package load failed", path + ": " + ex.Message.Split('\n')[0]);
+        throw;
+    }
 }
 foreach (var m in (Environment.GetEnvironmentVariable("UASSET_USMAP") ?? "").Split(':', StringSplitOptions.RemoveEmptyEntries))
 {
@@ -63,14 +70,17 @@ HashSet<string> Headers = new() { "ObjectName", "OuterIndex", "ClassIndex", "Sup
 if (args[0] == "--trace") { try { _ = Load(args[1], EngineVersion.UNKNOWN, mappings); Console.WriteLine("ok"); } catch (Exception ex) { Console.WriteLine(ex.ToString()); } return; }
 if (args[0] == "--failures") { var a = Load(args[1], EngineVersion.UNKNOWN, mappings, CustomSerializationFlags.ReadOnlyStreaming); foreach (var f in a.ExportParseFailures) Console.WriteLine($"{f.ObjectName}\t{f.ClassType}\n{f.ExceptionDetails}"); return; }
 // --json <package> <out.json>: every decoded export, for reading a reference asset's graphs, tables and settings
-if (args[0] == "--json") { var a = Load(args[1], EngineVersion.UNKNOWN, mappings, CustomSerializationFlags.ReadOnlyStreaming); File.WriteAllText(args[2], a.SerializeJson(true)); return; }
-if (args[0] == "--text") { var a = Load(args[1], EngineVersion.UNKNOWN, mappings, CustomSerializationFlags.ReadOnlyStreaming); using var w = new StreamWriter(args[2]); TextDump.Write(a, w); return; }
+if (args[0] == "--json") { var a = Load(args[1], EngineVersion.UNKNOWN, mappings, CustomSerializationFlags.ReadOnlyStreaming); var warnings = InspectCoverage(a, args[1]); using var w = new StreamWriter(args[2]); warnings.WriteJson(w, a.SerializeJson(true)); return; }
+if (args[0] == "--text") { var a = Load(args[1], EngineVersion.UNKNOWN, mappings, CustomSerializationFlags.ReadOnlyStreaming); var warnings = InspectCoverage(a, args[1]); warnings.Add("partial output", "Text output omits native fields; read the accompanying native output as well."); using var w = new StreamWriter(args[2]); warnings.WriteHeader(w); TextDump.Write(a, w); return; }
 // --native <package> <out> [export]: per export, everything decoded outside its tagged properties (native class tails,
 // specialized export data, bytecode), as UAssetAPI's JSON without the tagged Data that --text prints
 if (args[0] == "--native")
 {
     var a = Load(args[1], EngineVersion.UNKNOWN, mappings, CustomSerializationFlags.ReadOnlyStreaming);
+    var warnings = InspectCoverage(a, args[1]);
+    warnings.Add("partial output", "Native output omits tagged properties" + (args.Length >= 4 ? " and selects only one export." : "; read the accompanying text output as well."));
     using var w = new StreamWriter(args[2]);
+    warnings.WriteHeader(w);
     WriteNative(a, w, args.Length >= 4 ? args[3] : null);
     return;
 }
@@ -81,6 +91,7 @@ if (args[0] == "--check")
         try
         {
             var asset = Load(path, EngineVersion.UNKNOWN, mappings);
+            InspectCoverage(asset, path);
             int raw = asset.Exports.Count(e => e is RawExport && !(e is RigHierarchyExport rh && rh.FullyParsed) && !(e is RigVMExport v && v.FullyParsed));
             var original = File.ReadAllBytes(path);
             var written = asset.WriteData().ToArray();
@@ -91,6 +102,7 @@ if (args[0] == "--check")
         }
         catch (Exception ex)
         {
+            coverageSummary.Warnings.Add("failure", path + ": " + ex.Message.Split('\n')[0]);
             Console.WriteLine($"FAIL\t{ex.GetType().Name}: {ex.Message.Split('\n')[0]}\t{path}");
         }
     }
@@ -120,8 +132,8 @@ if (args[0] == "--audit")
     {
         UAsset asset;
         try { asset = Load(path, EngineVersion.UNKNOWN, mappings, CustomSerializationFlags.ReadOnlyStreaming); }
-        catch (Exception ex) { Console.WriteLine($"fail\t{ex.GetType().Name}\t0\t{ex.Message.Split('\n')[0]}\t{path}"); continue; }
-        Audit(asset, path, Console.Out);
+        catch (Exception ex) { coverageSummary.Warnings.Add("failure", path + ": " + ex.Message.Split('\n')[0]); Console.WriteLine($"fail\t{ex.GetType().Name}\t0\t{ex.Message.Split('\n')[0]}\t{path}"); continue; }
+        InspectCoverage(asset, path, Console.Out);
         Console.WriteLine($"done\t-\t{asset.Exports.Count}\t-\t{path}");
     }
     return;
@@ -137,23 +149,21 @@ if (args[0] == "--dataset")
     {
         UAsset asset;
         try { asset = Load(path, EngineVersion.UNKNOWN, mappings, CustomSerializationFlags.ReadOnlyStreaming); }
-        catch (Exception ex) { Console.WriteLine($"fail\t{ex.GetType().Name}\t0\t{ex.Message.Split('\n')[0]}\t{path}"); continue; }
+        catch (Exception ex) { coverageSummary.Warnings.Add("failure", path + ": " + ex.Message.Split('\n')[0]); Console.WriteLine($"fail\t{ex.GetType().Name}\t0\t{ex.Message.Split('\n')[0]}\t{path}"); continue; }
         try
         {
             string rel = Path.GetRelativePath(root, Path.GetFullPath(path)), text = rel + ".txt", native = rel + ".native.json";
             Directory.CreateDirectory(Path.GetDirectoryName(Path.Combine(outDir, rel)));
-            using (var w = new StreamWriter(Path.Combine(outDir, text))) TextDump.Write(asset, w);
+            var warnings = InspectCoverage(asset, path, Console.Out);
+            using (var w = new StreamWriter(Path.Combine(outDir, text))) { warnings.WriteHeader(w); TextDump.Write(asset, w); }
             bool any;
-            using (var w = new StreamWriter(Path.Combine(outDir, native))) any = WriteNative(asset, w, null, new PayloadSidecar(outDir, rel + ".payloads"));
+            using (var w = new StreamWriter(Path.Combine(outDir, native))) { warnings.WriteHeader(w); any = WriteNative(asset, w, null, new PayloadSidecar(outDir, rel + ".payloads")); }
             if (!any) { File.Delete(Path.Combine(outDir, native)); native = "-"; }
-            var residues = new StringWriter();
-            Audit(asset, path, residues);
-            Console.Write(residues);
-            int count = residues.ToString().Count(ch => ch == '\n');
+            int count = warnings.RecordCount;
             Console.WriteLine($"index\t{path}\t{text}\t{native}\t{asset.Exports.Count}\t{count}");
         }
         // a package that runs out of the worker's heap is retried alone with a larger one
-        catch (Exception ex) { Console.WriteLine($"fail\t{ex.GetType().Name}\t0\t{ex.Message.Split('\n')[0]}\t{path}"); if (Environment.GetEnvironmentVariable("UASSET_DETAILS") != null) Console.Error.WriteLine(ex); }
+        catch (Exception ex) { coverageSummary.Warnings.Add("failure", path + ": " + ex.Message.Split('\n')[0]); Console.WriteLine($"fail\t{ex.GetType().Name}\t0\t{ex.Message.Split('\n')[0]}\t{path}"); if (Environment.GetEnvironmentVariable("UASSET_DETAILS") != null) Console.Error.WriteLine(ex); }
         asset = null;
     }
     return;
@@ -168,6 +178,8 @@ static void Walk(object o, string cls, string name, string path, TextWriter w)
         case UAssetAPI.PropertyTypes.Structs.RawStructPropertyData rs:
             w.WriteLine($"rawstruct\t{rs.StructType?.Value?.Value ?? "?"}\t{rs.Value?.Length ?? 0}\t{name}.{rs.Name?.Value?.Value}{(rs.FailureReason == null ? "" : $" [{rs.FailureReason}]")}\t{path}"); return;
         case UAssetAPI.PropertyTypes.Objects.PropertyData pd:
+            if (pd is UAssetAPI.PropertyTypes.Structs.NativeFieldsPropertyData)
+                w.WriteLine($"audit-gap\t{cls}\t0\t{name}.{pd.Name}: native Fields are not traversed by the property audit\t{path}");
             var v = pd.GetType().GetProperty("Value")?.GetValue(pd) ?? pd.GetType().GetField("Value")?.GetValue(pd);
             if (v is UAssetAPI.PropertyTypes.Objects.PropertyData) Walk(v, cls, name, path, w);
             else if (v is System.Collections.IDictionary d) { foreach (System.Collections.DictionaryEntry kv in d) { Walk(kv.Key, cls, name, path, w); Walk(kv.Value, cls, name, path, w); } }
@@ -200,6 +212,20 @@ if (args[0] == "--registry")
 }
 // --usage <package list> <struct names>: header only, every imported class (module, name) and every name-map entry that is one of
 // the given struct names, each with the number of packages using it and one example; packages that fail to open are listed
+// --having <package list> <names>: header only, each package whose name map holds one of the given names, with that name
+if (args[0] == "--having")
+{
+    var wanted = new HashSet<string>(File.ReadLines(args[2]).Where(l => l.Length > 0));
+    foreach (var path in File.ReadLines(args[1]))
+    {
+        if (path.Length == 0) continue;
+        UAsset a;
+        try { a = Load(path, EngineVersion.UNKNOWN, null, CustomSerializationFlags.SkipLoadingExports | CustomSerializationFlags.ReadOnlyStreaming); }
+        catch (Exception ex) { Console.WriteLine($"fail\t{ex.Message.Split('\n')[0]}\t{path}"); continue; }
+        foreach (var n in a.GetNameMapIndexList()) if (wanted.Contains(n.Value)) Console.WriteLine($"{n.Value}\t{path}");
+    }
+    return;
+}
 if (args[0] == "--usage")
 {
     var interest = new HashSet<string>(File.ReadLines(args[2]).Where(l => l.Length > 0));
@@ -235,7 +261,18 @@ if (args[0] == "--sections") { var a = Load(args[1], EngineVersion.UNKNOWN, mapp
 if (args[0] == "--write") { File.WriteAllBytes(args[2], Load(args[1], EngineVersion.UNKNOWN, mappings).WriteData().ToArray()); return; }
 
 var version = args.Length > 1 ? Enum.Parse<EngineVersion>(args[1]) : EngineVersion.UNKNOWN;
-Console.Out.Write(Load(args[0], version, mappings).SerializeJson(true));
+var defaultAsset = Load(args[0], version, mappings);
+InspectCoverage(defaultAsset, args[0]).WriteJson(Console.Out, defaultAsset.SerializeJson(true));
+
+CoverageWarnings InspectCoverage(UAsset asset, string path, TextWriter records = null)
+{
+    var warnings = new CoverageWarnings(records, coverageSummary.Warnings);
+    warnings.Add("coverage not proven", "The audit does not account for every source byte or validate decoded values against engine serializers.");
+    if (asset.CustomSerializationFlags.HasFlag(CustomSerializationFlags.ReadOnlyStreaming))
+        warnings.Add("streaming omissions", "Bulk data and package trailers are not fully inspected; external or virtualized payload contents are not verified.");
+    Audit(asset, path, warnings);
+    return warnings;
+}
 
 void Audit(UAsset asset, string path, TextWriter o)
 {
@@ -248,12 +285,14 @@ void Audit(UAsset asset, string path, TextWriter o)
         // a rig hierarchy keeps its bytes for writing; it counts as decoded when its parse read all of them
         if (e is RigHierarchyExport rh)
         {
+            o.WriteLine($"audit-gap\t{cls}\t0\t{name}: hierarchy fields are not exhaustively traversed\t{path}");
             if (!rh.FullyParsed) o.WriteLine($"rigparse\t{cls}\t{rh.Data?.Length ?? 0}\t{name} [{rh.ParseFailure}]\t{path}");
             else foreach (var c in rh.Components ?? new()) if (c.Payload.Length > 0) o.WriteLine($"rigcomponent\t{c.ScriptStruct}\t{c.Payload.Length}\t{name}.{c.Name}\t{path}");
             continue;
         }
         if (e is RigVMExport vm)
         {
+            o.WriteLine($"audit-gap\t{cls}\t0\t{name}: RigVM fields are not exhaustively traversed\t{path}");
             if (!vm.FullyParsed) o.WriteLine($"rigparse\t{cls}\t{vm.Data?.Length ?? 0}\t{name} [{vm.ParseFailure}]\t{path}");
             continue;
         }
@@ -269,7 +308,12 @@ void Audit(UAsset asset, string path, TextWriter o)
         // a class default object loads through UClass::SerializeDefaultObject, which reads only its tagged properties, so
         // bytes after them never reach the engine: "cdotrail" keeps them apart from undecoded data the engine does read
         if (e.Extras != null && e.Extras.Length > 0) o.WriteLine($"{(e.ObjectFlags.HasFlag(EObjectFlags.RF_ClassDefaultObject) ? "cdotrail" : "extras")}\t{cls}\t{e.Extras.Length}\t{name}{(e.NativeTailFailure == null ? "" : $" [{e.NativeTailFailure}]")}{(e.Extras.Length <= 16 ? " =" + Convert.ToHexString(e.Extras) : "")}\t{path}");
-        if (e is NormalExport n) foreach (var p in n.Data) Walk(p, cls, name, path, o);
+        if (e is NormalExport n)
+        {
+            foreach (var p in n.Data ?? new()) Walk(p, cls, name, path, o);
+            if (n.SparseClassData != null || n.LeadingNative?.Length > 0)
+                o.WriteLine($"audit-gap\t{cls}\t0\t{name}: sparse class data or leading native fields are not exhaustively traversed\t{path}");
+        }
         if (e.NativeTails != null) Blobs(e.NativeTails, cls, name, "", path, o, 0);
     }
 }
@@ -335,7 +379,12 @@ bool WriteNative(UAsset a, TextWriter w, string only, Newtonsoft.Json.JsonConver
 // payload whose format is its own (pixels, compressed buffers, embedded files) or structure still to decode.
 static void Blobs(object v, string cls, string name, string at, string path, TextWriter w, int depth)
 {
-    if (v == null || depth > 12) return;
+    if (v == null) return;
+    if (depth > 12)
+    {
+        w.WriteLine($"pruned-depth\t{cls}\t0\t{name}{at}: audit stopped at depth {depth} (limit 12)\t{path}");
+        return;
+    }
     switch (v)
     {
         case byte[] b:
@@ -354,12 +403,29 @@ static void Blobs(object v, string cls, string name, string at, string path, Tex
             return;
         case System.Collections.IEnumerable list:
             int i = 0;
-            foreach (var x in list) { Blobs(x, cls, name, $"{at}[{(i < 1 ? "0" : "*")}]", path, w, depth + 1); if (++i > 4096) break; }
+            foreach (var x in list)
+            {
+                if (i >= 4097)
+                {
+                    w.WriteLine($"pruned-collection\t{cls}\t0\t{name}{at}: audit stopped after 4097 entries; more entries exist\t{path}");
+                    break;
+                }
+                Blobs(x, cls, name, $"{at}[{(i < 1 ? "0" : "*")}]", path, w, depth + 1);
+                i++;
+            }
             return;
     }
     var type = v.GetType();
-    if (type.Namespace == null || !type.Namespace.StartsWith("UAssetAPI")) return;
-    if (v is UAssetAPI.PropertyTypes.Objects.PropertyData) return; // tagged data is --audit's Walk
+    if (type.Namespace == null || !type.Namespace.StartsWith("UAssetAPI"))
+    {
+        w.WriteLine($"audit-gap\t{cls}\t0\t{name}{at}: uninspected object type {type.FullName}\t{path}");
+        return;
+    }
+    if (v is UAssetAPI.PropertyTypes.Objects.PropertyData)
+    {
+        w.WriteLine($"audit-gap\t{cls}\t0\t{name}{at}: nested native property is not traversed by the blob audit\t{path}");
+        return;
+    }
     foreach (var f in type.GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance))
         if (f.IsDefined(typeof(UAssetAPI.JSON.WriteBackCopyAttribute), true) || typeof(UAsset).IsAssignableFrom(f.FieldType)) continue;
         else if (f.GetCustomAttributes(typeof(UAssetAPI.JSON.PayloadFormatAttribute), true).FirstOrDefault() is UAssetAPI.JSON.PayloadFormatAttribute fmt)
