@@ -27,7 +27,16 @@ static class TextDump
             var e = a.Exports[i];
             o.WriteLine($"#{i + 1} {e.GetExportClassType()?.Value?.Value} {e.ObjectName}  outer={Ref(a, e.OuterIndex)}");
             if (e is NormalExport n)
+            {
                 foreach (var p in n.Data) Prop(a, p, o, "  ");
+                // UBlueprintGeneratedClass::SerializeDefaultObject's sparse class data, after the default object's properties
+                if (n.SparseClassDataStruct != null && !n.SparseClassDataStruct.IsNull())
+                {
+                    o.WriteLine($"  SparseClassData ({Ref(a, n.SparseClassDataStruct)}):");
+                    if (n.SparseClassData != null) foreach (var p in n.SparseClassData) Prop(a, p, o, "    ");
+                }
+            }
+            if (e is RigVMLinkExport rl) o.WriteLine($"  link {rl.SourcePinPath} -> {rl.TargetPinPath}");
             if (e is EdGraphNodeExport g && g.Pins != null)
                 foreach (var p in g.Pins)
                 {
