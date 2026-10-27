@@ -552,7 +552,11 @@ internal static class ClassSerializers
         var bones = c.Array(() =>
         {
             var name = c.Name(); int parent = r.ReadInt32();
-            if (ue4 < REFERENCE_SKELETON_REFACTOR) r.ReadUInt32();
+            if (ue4 < REFERENCE_SKELETON_REFACTOR)
+            {
+                asset.Coverage.Report("discarded-value", "Legacy reference-skeleton bone metadata was read without retaining it.");
+                r.ReadUInt32();
+            }
             string export = ue4 >= STORE_BONE_EXPORT_NAMES && !asset.IsFilterEditorOnly ? c.Str() : null;
             return new object[] { name, parent, export };
         }, 12);
@@ -1681,7 +1685,11 @@ internal static class ClassSerializers
             uint flags = r.ReadUInt32();
             bool wide = (flags & (1u << 13)) != 0;
             long count = wide ? r.ReadInt64() : r.ReadInt32(), size = wide ? r.ReadInt64() : r.ReadInt32(), offset = r.ReadInt64();
-            if ((flags & (1u << 15)) != 0) r.ReadUInt16();
+            if ((flags & (1u << 15)) != 0)
+            {
+                r.Asset.Coverage.Report("discarded-value", "Bulk data's legacy bad-data-version field was read without retaining it.");
+                r.ReadUInt16();
+            }
             object duplicate = null;
             if ((flags & (1u << 14)) != 0) duplicate = new object[] { r.ReadUInt32(), wide ? r.ReadInt64() : r.ReadInt32(), r.ReadInt64() };
             byte[] payload = null;
@@ -1762,6 +1770,7 @@ internal static class ClassSerializers
                 {
                     // FDeprecatedSerializedPackedNormal: four bytes, each a component mapped from [0, 255] to [-1, 1]
                     for (int k = 0; k < 3; k++) tangent[i * 3 + k] = r.ReadByte() / 127.5f - 1;
+                    asset.Coverage.Report("discarded-value", "MorphTarget packed tangent fourth component was read without retaining it.");
                     r.ReadByte();
                 }
                 else for (int k = 0; k < 3; k++) tangent[i * 3 + k] = r.ReadSingle();

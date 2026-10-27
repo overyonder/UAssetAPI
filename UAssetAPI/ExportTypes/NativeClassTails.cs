@@ -507,11 +507,20 @@ public static class NativeClassTails
                 bool wide = size == 24 || size == 32;
                 int components = wide ? size / 8 : size / 4;
                 var keys = new float[count * components];
-                for (int i = 0; i < keys.Length; i++) keys[i] = wide ? (float)r.ReadDouble() : r.ReadSingle();
+                for (int i = 0; i < keys.Length; i++)
+                {
+                    if (!wide) { keys[i] = r.ReadSingle(); continue; }
+                    double value = r.ReadDouble();
+                    keys[i] = (float)value;
+                    if (!double.IsNaN(value) && (double)keys[i] != value)
+                        asset.Coverage.Report("precision-loss", "An animation raw-track double value lost precision when converted to a float.");
+                }
                 arrays.Add(keys);
             }
             tracks.Add(arrays.ToArray());
         }
+        if (r.BaseStream.Position != bytes.Length)
+            asset.Coverage.Report("unread-native-buffer", $"Raw animation track decoder consumed {r.BaseStream.Position} of {bytes.Length} buffer bytes.");
         return tracks;
     }
 
@@ -555,7 +564,7 @@ public static class NativeClassTails
     }
 
     // Blueprint class package path + class name -> its nearest native class, across all packages read in this process.
-    static readonly ConcurrentDictionary<string, (string Module, string Class)?> BlueprintNativeBase = new();
+    static readonly ConcurrentDictionary<string, ((string Module, string Class)? Base, DecodeCoverageDiagnostic[] Diagnostics)> BlueprintNativeBase = new();
 
     /// <summary>Reads the tails from an export's leftover bytes, keeping them only if they account for every byte.</summary>
     internal static void TryRead(UAsset asset, Export export)
@@ -948,6 +957,7 @@ public static class NativeClassTails
             string module = schema.SuperTypeModulePath;
             native = (string.IsNullOrEmpty(module) ? null : module.StartsWith("/Script/") ? module : "/Script/" + module, schema.SuperType);
         }
+        if (native.Class != null) asset.Coverage.Report("pruned-depth", $"{export.ObjectName}: bounds-default ancestry resolution exceeded 64 parents.");
         return false;
     }
 
@@ -1043,6 +1053,7 @@ public static class NativeClassTails
             if (KeysByClassName.Value.TryGetValue(parent, out var byName)) return byName;
             native = (null, parent);
         }
+        asset.Coverage.Report("pruned-depth", $"{native.Class}: native serialization ancestry resolution exceeded 64 parents.");
         return null;
     }
 
@@ -1080,13 +1091,19 @@ public static class NativeClassTails
         return false;
     }
 
-    static (string Module, string Class)? NativeBaseOf(UAsset asset, FPackageIndex classIndex, int depth = 0)
+    static (string Module, string Class)? NativeBaseOf(UAsset asset, FPackageIndex classIndex, int depth = 0, DecodeCoverage coverage = null)
     {
-        if (classIndex == null || classIndex.IsNull() || depth > 32) return null;
+        coverage ??= asset.Coverage;
+        if (classIndex == null || classIndex.IsNull()) return null;
+        if (depth > 32)
+        {
+            coverage.Report("pruned-depth", "Native parent-class resolution stopped at depth 33 (limit 32).");
+            return null;
+        }
         if (classIndex.IsExport())
         {
             var exp = classIndex.ToExport(asset);
-            return exp is StructExport s ? NativeBaseOf(asset, s.SuperStruct, depth + 1) : null;
+            return exp is StructExport s ? NativeBaseOf(asset, s.SuperStruct, depth + 1, coverage) : null;
         }
         var cls = classIndex.ToImport(asset);
         if (cls?.OuterIndex?.IsImport() != true) return null;
@@ -1094,8 +1111,13 @@ public static class NativeClassTails
         if (package == null || name == null) return null;
         if (package.StartsWith("/Script/")) return (package, name);
         string key = package + "." + name;
-        if (BlueprintNativeBase.TryGetValue(key, out var cached)) return cached;
+        if (BlueprintNativeBase.TryGetValue(key, out var cached))
+        {
+            coverage.Include(cached.Diagnostics);
+            return cached.Base;
+        }
         (string, string)? result = null;
+        var resolutionCoverage = new DecodeCoverage();
         try
         {
             string path = asset.FindAssetOnDiskFromPath(package);
@@ -1103,11 +1125,16 @@ public static class NativeClassTails
             {
                 var other = new UAsset(path, EngineVersion.UNKNOWN, asset.Mappings, CustomSerializationFlags.SkipParsingBytecode | CustomSerializationFlags.SkipPreloadDependencyLoading | CustomSerializationFlags.ReadOnlyStreaming);
                 var classExport = other.Exports.OfType<StructExport>().FirstOrDefault(e => e.ObjectName?.ToString() == name);
-                if (classExport != null) result = NativeBaseOf(other, classExport.SuperStruct, depth + 1);
+                if (classExport != null) result = NativeBaseOf(other, classExport.SuperStruct, depth + 1, resolutionCoverage);
             }
         }
-        catch (Exception) { }
-        BlueprintNativeBase[key] = result;
+        catch (Exception ex)
+        {
+            resolutionCoverage.Report("unresolved-parent", $"{key}: native parent resolution failed: {ex.GetType().Name}: {ex.Message.Split('\n')[0]}");
+        }
+        var diagnostics = resolutionCoverage.Diagnostics.ToArray();
+        BlueprintNativeBase[key] = (result, diagnostics);
+        coverage.Include(diagnostics);
         return result;
     }
 }

@@ -145,7 +145,9 @@ namespace UAssetAPI.ExportTypes
 
             bDeprecatedForceScriptOrder = reader.ReadInt32() == 1;
 
-            reader.ReadInt64(); // None
+            var terminator = reader.ReadFName();
+            if (terminator.ToString() != "None")
+                Asset.Coverage.Report("discarded-value", $"{ObjectName}: expected the class None terminator, read {terminator}; it is not retained.");
 
             if (Asset.ObjectVersion >= ObjectVersion.VER_UE4_ADD_COOKED_TO_UCLASS)
             {

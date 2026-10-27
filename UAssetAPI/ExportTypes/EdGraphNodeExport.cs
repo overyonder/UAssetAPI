@@ -56,6 +56,7 @@ public class EdGraphNodeExport : NormalExport
             if (TailsByClassName.Value.TryGetValue(parent, out tail)) return tail;
             (module, name) = (null, parent);
         }
+        asset.Coverage.Report("pruned-depth", $"{export.ObjectName}: graph-node ancestry resolution exceeded 64 parents.");
         return null;
     }
 

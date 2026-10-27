@@ -402,6 +402,12 @@ namespace UAssetAPI
                         throw;
                     }
                 }
+                if (includeHeader && !reader.Asset.HasUnversionedProperties && data.CoverageBodyStart >= posBefore)
+                {
+                    long consumed = reader.BaseStream.Position - data.CoverageBodyStart;
+                    if (consumed != leng)
+                        reader.Asset.Coverage.Report("property-size-mismatch", $"{name} ({type}): tag declares {leng} body bytes; decoder consumed {consumed}.");
+                }
                 if (data.Offset == 0) data.Offset = startingOffset; // fallback
             }
             else if (reader != null && isZero)

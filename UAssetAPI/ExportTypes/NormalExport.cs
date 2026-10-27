@@ -275,6 +275,7 @@ namespace UAssetAPI.ExportTypes
                 var schema = asset.Mappings?.GetSchemaFromName(name, asset, null, false);
                 name = schema?.SuperType;
             }
+            if (name != null) asset.Coverage.Report("pruned-depth", "Blueprint generated-class ancestry resolution exceeded 32 parents.");
             return false;
         }
 

@@ -123,6 +123,8 @@ namespace UAssetAPI
         /// written back.
         /// </summary>
         ReadOnlyStreaming = 32,
+        /// <summary>Collect concrete decoder omissions and unread source ranges for a coverage audit.</summary>
+        TrackReadCoverage = 64,
     }
 
 
@@ -287,6 +289,8 @@ namespace UAssetAPI
         /// List of custom serialization flags, used to override certain optional behavior in how UAssetAPI serializes assets.
         /// </summary>
         public CustomSerializationFlags CustomSerializationFlags;
+        [JsonIgnore]
+        public DecodeCoverage Coverage = new DecodeCoverage();
 
         /// <summary>
         /// Should the asset be split into separate .uasset, .uexp, and .ubulk files, as opposed to one single .uasset file?
@@ -1301,6 +1305,9 @@ namespace UAssetAPI
 
         internal static JsonSerializerSettings jsonSettings = CreateJsonSettings();
 
+        /// <summary>A streaming serializer using the same contract as SerializeJson.</summary>
+        public static JsonSerializer CreateJsonSerializer() => JsonSerializer.Create(CreateJsonSettings());
+
         /// <summary>
         /// A serializer for reading decoded data rather than round-tripping it: the same converters, without type names or
         /// null members.
@@ -1990,17 +1997,14 @@ namespace UAssetAPI
         /// <param name="reader"></param>
         /// <exception cref="UnknownEngineVersionException">Thrown when this is an unversioned asset and <see cref="ObjectVersion"/> is unspecified.</exception>
         /// <exception cref="FormatException">Throw when the asset cannot be parsed correctly.</exception>
-        private void ReadHeader(AssetBinaryReader reader)
+        public void ReadHeader(AssetBinaryReader reader)
         {
             reader.BaseStream.Seek(0, SeekOrigin.Begin);
             uint fileSignature = reader.ReadUInt32();
             if (fileSignature != UASSET_MAGIC) throw new FormatException("File signature mismatch");
 
             LegacyFileVersion = reader.ReadInt32();
-            if (LegacyFileVersion != -4)
-            {
-                reader.ReadInt32(); // LegacyUE3Version for backwards-compatibility with UE3 games: always 864 in versioned assets, always 0 in unversioned assets
-            }
+            int? legacyUE3Version = LegacyFileVersion != -4 ? reader.ReadInt32() : null;
 
             ObjectVersion fileVersionUE4 = (ObjectVersion)reader.ReadInt32();
             if (fileVersionUE4 > ObjectVersion.UNKNOWN)
@@ -2014,6 +2018,9 @@ namespace UAssetAPI
                 if (Mappings != null && Mappings.FileVersionUE4 > 0) ObjectVersion = Mappings.FileVersionUE4;
                 if (ObjectVersion == ObjectVersion.UNKNOWN) throw new UnknownEngineVersionException("Cannot begin serialization of an unversioned asset before an object version is manually specified");
             }
+
+            if (legacyUE3Version.HasValue && legacyUE3Version.Value != (IsUnversioned ? 0 : 864))
+                Coverage.Report("discarded-value", $"Unexpected legacy UE3 version {legacyUE3Version.Value} was read without retaining it.");
 
             if (LegacyFileVersion <= -8)
             {
@@ -2118,7 +2125,10 @@ namespace UAssetAPI
 
                 if (ObjectVersion >= ObjectVersion.VER_UE4_ADDED_PACKAGE_OWNER &&
                     ObjectVersion < ObjectVersion.VER_UE4_NON_OUTER_PACKAGE_IMPORT)
+                {
+                    Coverage.Report("discarded-value", $"Deprecated package-owner GUID at package byte {reader.BaseStream.Position} is consumed without retaining it.");
                     reader.ReadBytes(16);
+                }
             }
 
             Generations = new List<FGenerationInfo>();
@@ -2200,6 +2210,19 @@ namespace UAssetAPI
             NamesReferencedFromExportDataCount = ObjectVersionUE5 >= ObjectVersionUE5.NAMES_REFERENCED_FROM_EXPORT_DATA ? reader.ReadInt32() : NameCount;
             PayloadTocOffset = ObjectVersionUE5 >= ObjectVersionUE5.PAYLOAD_TOC ? reader.ReadInt64() : -1;
             DataResourceOffset = ObjectVersionUE5 >= ObjectVersionUE5.DATA_RESOURCES ? reader.ReadInt32() : -1;
+            if (CustomSerializationFlags.HasFlag(CustomSerializationFlags.ReadOnlyStreaming) && PayloadTocOffset > 0)
+            {
+                long trailerEnd = BulkDataStartOffset > PayloadTocOffset ? BulkDataStartOffset : reader.BaseStream.Length;
+                if (PayloadTocOffset < trailerEnd && trailerEnd <= reader.BaseStream.Length)
+                    Coverage.Report("streaming-trailer", $"Package trailer [{PayloadTocOffset}, {trailerEnd}) ({trailerEnd - PayloadTocOffset} bytes) is not loaded or decoded by ReadOnlyStreaming.");
+            }
+            if (CustomSerializationFlags.HasFlag(CustomSerializationFlags.ReadOnlyStreaming) && BulkDataStartOffset > 0)
+            {
+                long bulkEnd = PayloadTocOffset > BulkDataStartOffset ? PayloadTocOffset : reader.BaseStream.Length;
+                // A four-byte region alone can be the package terminator, rather than bulk data.
+                if (bulkEnd <= reader.BaseStream.Length && bulkEnd - BulkDataStartOffset > 4)
+                    Coverage.Report("streaming-bulk", $"Package bulk region [{BulkDataStartOffset}, {bulkEnd}) ({bulkEnd - BulkDataStartOffset} bytes) is not loaded or decoded by ReadOnlyStreaming.");
+            }
         }
 
         /// <summary>
@@ -2213,6 +2236,19 @@ namespace UAssetAPI
         public virtual void Read(AssetBinaryReader reader, int[] manualSkips = null, int[] forceReads = null)
         {
             reader.Asset = this;
+            Coverage.Clear();
+            CoverageReadStream coverageStream = null;
+            if (CustomSerializationFlags.HasFlag(CustomSerializationFlags.TrackReadCoverage))
+            {
+                coverageStream = new CoverageReadStream(reader.BaseStream, Coverage);
+                reader = new AssetBinaryReader(coverageStream, reader.LoadUexp, this);
+            }
+            try { ReadContents(reader, manualSkips, forceReads); }
+            finally { coverageStream?.ReportUnreadRanges(); }
+        }
+
+        private void ReadContents(AssetBinaryReader reader, int[] manualSkips, int[] forceReads)
+        {
             hasFoundParentClassExportName = false;
 
             // Header
@@ -2538,6 +2574,7 @@ namespace UAssetAPI
                         if (!skipLoadingExports) reader.BaseStream.Seek(Exports[i].SerialOffset, SeekOrigin.Begin);
                         if (skipParsingExports || skipLoadingExports || (manualSkips != null && manualSkips.Contains(i) && (forceReads == null || !forceReads.Contains(i))))
                         {
+                            Coverage.Report("skipped-export", $"{Exports[i].ObjectName}: export parsing was disabled ({Exports[i].SerialSize} source bytes).");
                             Exports[i] = Exports[i].ConvertToChildExport<RawExport>();
                             ((RawExport)Exports[i]).Data = skipLoadingExports ? Array.Empty<byte>() : reader.ReadBytes((int)Exports[i].SerialSize);
                             continue;
@@ -2554,6 +2591,7 @@ namespace UAssetAPI
                         if (!skipLoadingExports) reader.BaseStream.Seek(Exports[i].SerialOffset, SeekOrigin.Begin);
                         if (skipParsingExports || skipLoadingExports || (manualSkips != null && manualSkips.Contains(i) && (forceReads == null || !forceReads.Contains(i))))
                         {
+                            Coverage.Report("skipped-export", $"{Exports[i].ObjectName}: export parsing was disabled ({Exports[i].SerialSize} source bytes).");
                             Exports[i] = Exports[i].ConvertToChildExport<RawExport>();
                             ((RawExport)Exports[i]).Data = skipLoadingExports ? Array.Empty<byte>() : reader.ReadBytes((int)Exports[i].SerialSize);
                             continue;
@@ -2574,6 +2612,7 @@ namespace UAssetAPI
                 // convert all exports as appropriate, but do no further reading
                 for (int i = 0; i < Exports.Count; i++)
                 {
+                    if (Exports[i].SerialSize > 0) Coverage.Report("skipped-export", $"{Exports[i].ObjectName}: export data was not loaded ({Exports[i].SerialSize} source bytes).");
                     if (manualSkips != null && manualSkips.Contains(i) && (forceReads == null || !forceReads.Contains(i)))
                     {
                         Exports[i] = Exports[i].ConvertToChildExport<RawExport>();
@@ -2622,6 +2661,12 @@ namespace UAssetAPI
                 }
             }
 
+            ReadThumbnails(reader);
+        }
+
+        /// <summary>Read the package's thumbnail table and images independently of its exports.</summary>
+        public void ReadThumbnails(AssetBinaryReader reader)
+        {
             // Thumbnails
             if (ThumbnailTableOffset > 0)
             {

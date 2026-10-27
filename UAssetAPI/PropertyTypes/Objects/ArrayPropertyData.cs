@@ -142,6 +142,7 @@ public class ArrayPropertyData : PropertyData<PropertyData[]>
                 name = reader.ReadFName();
                 if (name.Value.Value.Equals("None"))
                 {
+                    if (numEntries > 0) reader.Asset.Coverage.Report("untyped-array", $"{Name}: {numEntries} struct array elements were not read because the inner property name is None.");
                     Value = results;
                     return;
                 }
@@ -149,6 +150,7 @@ public class ArrayPropertyData : PropertyData<PropertyData[]>
                 FName thisArrayType = reader.ReadFName();
                 if (thisArrayType.Value.Value.Equals("None"))
                 {
+                    if (numEntries > 0) reader.Asset.Coverage.Report("untyped-array", $"{Name}: {numEntries} struct array elements were not read because the inner property type is None.");
                     Value = results;
                     return;
                 }
@@ -158,7 +160,8 @@ public class ArrayPropertyData : PropertyData<PropertyData[]>
                 structLength = reader.ReadInt64(); // length value
                 fullType = reader.ReadFName();
                 structGUID = reader.ReadGuid();
-                reader.ReadPropertyGuid();
+                if (reader.ReadPropertyGuid() is Guid)
+                    reader.Asset.Coverage.Report("discarded-value", $"{Name}: inner array property GUID was read without retaining it.");
                 InnerTagExtensions = ReadInnerTagExtensions(reader);
             }
             else

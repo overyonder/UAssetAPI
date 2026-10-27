@@ -180,6 +180,7 @@ namespace UAssetAPI.PropertyTypes.Objects
         public object Tag;
 
         protected object _rawValue;
+        internal long CoverageBodyStart = -1;
         public virtual object RawValue
         {
             get
@@ -283,6 +284,7 @@ namespace UAssetAPI.PropertyTypes.Objects
                     if (PropertyTagExtensions.HasFlag(EPropertyTagExtension.HasExternalsObjects)) bExperimentalExternalObjects = reader.ReadBooleanInt();
                 }
             }
+            CoverageBodyStart = reader.BaseStream.Position;
         }
 
         /// <summary>

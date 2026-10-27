@@ -113,6 +113,8 @@ namespace UAssetAPI.ExportTypes
                         tempCode.Add(ExpressionSerializer.ReadExpression(reader));
                     }
                     ScriptBytecode = tempCode.ToArray();
+                    if (reader.BaseStream.Position - startedReading != scriptStorageSize)
+                        Asset.Coverage.Report("bytecode-size-mismatch", $"{ObjectName}: bytecode declares {scriptStorageSize} stored bytes; decoder consumed {reader.BaseStream.Position - startedReading}.");
                     willParseRaw = false;
                 }
             }
@@ -126,6 +128,7 @@ namespace UAssetAPI.ExportTypes
 
             if (willParseRaw)
             {
+                if (scriptStorageSize > 0) Asset.Coverage.Report("raw-bytecode", $"{ObjectName}: {scriptStorageSize} bytecode bytes were retained without decoding.");
                 reader.BaseStream.Seek(startedReading, SeekOrigin.Begin);
                 ScriptBytecode = null;
                 ScriptBytecodeRaw = reader.ReadBytes(scriptStorageSize);
