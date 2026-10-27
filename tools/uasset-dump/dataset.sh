@@ -6,6 +6,10 @@
 # .payloads/<SHA-1>.bin), index.tsv (package, text, native, exports, residues) and residue.tsv (the --audit and fail lines).
 set -u
 tool=$1 list=$2 root=$3 out=$4
+if [ ! -f "$list" ] || [ ! -r "$list" ]; then
+  printf '# WARNING: No complete coverage can be claimed based on this output.\n# input package list could not be read: %s\n' "$list" >&2
+  exit 1
+fi
 M=$(dirname "$(readlink -f "$0")")/mappings
 export UASSET_ENGINE=~/.local/opt/unreal-engine/5.8.3/Engine
 export UASSET_OODLE=$UASSET_ENGINE/Binaries/DotNET/AutomationTool/AutomationScripts/BuildGraph/net10.0/runtimes/linux-x64/native/liboo2core.so
@@ -33,4 +37,5 @@ awk -F'\t' -v retried="$out/batches/retried.out" 'FILENAME==retried { if ($1=="i
 cat "$out/batches/retried.out" >> "$out/batches/all.out"
 grep '^index' "$out/batches/all.out" | cut -f2- > "$out/index.tsv"
 grep -v '^index' "$out/batches/all.out" > "$out/residue.tsv"
+"$dotnet" "$tool/uasset-dump.dll" --coverage-summary "$out/index.tsv" "$out" "$list"
 echo "batches $(ls "$out"/batches/*.status | wc -l), nonzero $(grep -L '^0$' "$out"/batches/*.status | wc -l), packages $(wc -l < "$out/index.tsv"), residue lines $(wc -l < "$out/residue.tsv")" | tee "$out/summary"

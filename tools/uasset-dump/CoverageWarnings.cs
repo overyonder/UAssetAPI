@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
 using Newtonsoft.Json;
 
@@ -20,10 +21,18 @@ sealed class CoverageWarnings : TextWriter
         this.summary = summary;
     }
 
+    public CoverageWarnings Fork()
+    {
+        var copy = new CoverageWarnings(summary: summary);
+        foreach (var pair in reasons) copy.reasons.Add(pair.Key, pair.Value);
+        return copy;
+    }
+
     public void Add(string reason, string example)
     {
-        reasons[reason] = reasons.TryGetValue(reason, out var entry)
-            ? (entry.Count + 1, entry.Example) : (1, example);
+        lock (reasons)
+            reasons[reason] = reasons.TryGetValue(reason, out var entry)
+                ? (entry.Count + 1, entry.Example) : (1, example);
         summary?.Add(reason, example);
     }
 
@@ -45,20 +54,59 @@ sealed class CoverageWarnings : TextWriter
             writer.WriteLine($"# {reason} ({entry.Count}): {entry.Example}");
     }
 
-    // Keep standalone JSON valid: put the warning first, alongside the existing asset properties.
-    public void WriteJson(TextWriter writer, string json)
+    public IEnumerable<string> Details => reasons.Select(pair => $"{pair.Key} ({pair.Value.Count}): {pair.Value.Example}");
+    public bool Any => reasons.Count > 0;
+
+    // Render before writing the header: formatters can discover omissions while producing the body.
+    // Both passes stream through disk, keeping the memory bound independent of output size.
+    public bool WriteFile(string path, Func<TextWriter, bool> render, bool json = false)
     {
-        if (reasons.Count == 0) { writer.Write(json); return; }
-        writer.Write("{\n\"CoverageWarnings\": [");
-        writer.Write(JsonConvert.SerializeObject(Notice));
-        foreach (var (reason, entry) in reasons)
+        string body = Path.GetTempFileName();
+        try
         {
-            writer.Write(',');
-            writer.Write(JsonConvert.SerializeObject($"{reason} ({entry.Count}): {entry.Example}"));
+            bool any;
+            using (var writer = new StreamWriter(body)) any = render(writer);
+            WriteStagedBody(path, body, json);
+            return any;
         }
-        writer.Write("],");
-        writer.Write(json.AsSpan(json.IndexOf('{') + 1));
+        catch (Exception ex)
+        {
+            Add("output failed", (path ?? "stdout") + ": " + ex.Message.Split('\n')[0]);
+            throw;
+        }
+        finally { File.Delete(body); }
     }
+
+    public void WriteStagedBody(string path, string body, bool json = false)
+    {
+        string output = path == null ? null : path + ".coverage-" + Guid.NewGuid().ToString("N");
+        try
+        {
+            using var reader = new StreamReader(body);
+            using (var writer = output == null ? new StreamWriter(Console.OpenStandardOutput()) { AutoFlush = true } : new StreamWriter(output))
+            {
+                if (json && reasons.Count > 0)
+                {
+                    int first;
+                    do { first = reader.Read(); } while (first >= 0 && char.IsWhiteSpace((char)first));
+                    if (first != '{') throw new InvalidDataException("Expected a package JSON object.");
+                    writer.Write("{\n\"CoverageWarnings\": [");
+                    writer.Write(JsonConvert.SerializeObject(Notice));
+                    foreach (var (reason, entry) in reasons)
+                        writer.Write("," + JsonConvert.SerializeObject($"{reason} ({entry.Count}): {entry.Example}"));
+                    writer.Write("],");
+                }
+                else if (!json) WriteHeader(writer);
+                char[] buffer = new char[65536];
+                int read;
+                while ((read = reader.Read(buffer, 0, buffer.Length)) > 0) writer.Write(buffer, 0, read);
+            }
+            if (output != null) File.Move(output, path, true);
+        }
+        finally { if (output != null) File.Delete(output); }
+    }
+
+
 }
 
 sealed class CoverageWarningSummary : IDisposable

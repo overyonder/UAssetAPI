@@ -11,6 +11,8 @@ using UAssetAPI.UnrealTypes;
 using UAssetAPI.Unversioned;
 
 using var coverageSummary = new CoverageWarningSummary();
+try
+{
 
 // UASSET_USMAP names a .usmap whose native schemas resolve types that older property tags leave out
 // UASSET_PARENTS names a TSV of project C++ class and parent, read from their UCLASS declarations, for classes no
@@ -50,7 +52,7 @@ Usmap mappings = null;
 UAsset Load(string path, EngineVersion version, Usmap map, CustomSerializationFlags flags = CustomSerializationFlags.None)
 {
     map?.BeginAssetScope();
-    try { return new UAsset(path, version, map, flags); }
+    try { return new UAsset(path, version, map, flags | CustomSerializationFlags.TrackReadCoverage); }
     catch (Exception ex)
     {
         coverageSummary.Warnings.Add("package load failed", path + ": " + ex.Message.Split('\n')[0]);
@@ -70,8 +72,8 @@ HashSet<string> Headers = new() { "ObjectName", "OuterIndex", "ClassIndex", "Sup
 if (args[0] == "--trace") { try { _ = Load(args[1], EngineVersion.UNKNOWN, mappings); Console.WriteLine("ok"); } catch (Exception ex) { Console.WriteLine(ex.ToString()); } return; }
 if (args[0] == "--failures") { var a = Load(args[1], EngineVersion.UNKNOWN, mappings, CustomSerializationFlags.ReadOnlyStreaming); foreach (var f in a.ExportParseFailures) Console.WriteLine($"{f.ObjectName}\t{f.ClassType}\n{f.ExceptionDetails}"); return; }
 // --json <package> <out.json>: every decoded export, for reading a reference asset's graphs, tables and settings
-if (args[0] == "--json") { var a = Load(args[1], EngineVersion.UNKNOWN, mappings, CustomSerializationFlags.ReadOnlyStreaming); var warnings = InspectCoverage(a, args[1]); using var w = new StreamWriter(args[2]); warnings.WriteJson(w, a.SerializeJson(true)); return; }
-if (args[0] == "--text") { var a = Load(args[1], EngineVersion.UNKNOWN, mappings, CustomSerializationFlags.ReadOnlyStreaming); var warnings = InspectCoverage(a, args[1]); using var w = new StreamWriter(args[2]); warnings.WriteHeader(w); TextDump.Write(a, w); return; }
+if (args[0] == "--json") { var a = Load(args[1], EngineVersion.UNKNOWN, mappings, CustomSerializationFlags.ReadOnlyStreaming); var warnings = InspectCoverage(a, args[1]); WriteJson(a, args[2], warnings); return; }
+if (args[0] == "--text") { var a = Load(args[1], EngineVersion.UNKNOWN, mappings, CustomSerializationFlags.ReadOnlyStreaming); var warnings = InspectCoverage(a, args[1]); warnings.WriteFile(args[2], w => { TextDump.Write(a, w, warnings); return true; }); return; }
 // --native <package> <out> [export]: per export, everything decoded outside its tagged properties (native class tails,
 // specialized export data, bytecode), as UAssetAPI's JSON without the tagged Data that --text prints
 if (args[0] == "--native")
@@ -79,9 +81,7 @@ if (args[0] == "--native")
     var a = Load(args[1], EngineVersion.UNKNOWN, mappings, CustomSerializationFlags.ReadOnlyStreaming);
     var warnings = InspectCoverage(a, args[1]);
     if (args.Length >= 4 && a.Exports.Count > 1) warnings.Add("selected export", "Only one of the package's exports is included.");
-    using var w = new StreamWriter(args[2]);
-    warnings.WriteHeader(w);
-    WriteNative(a, w, args.Length >= 4 ? args[3] : null);
+    warnings.WriteFile(args[2], w => WriteNative(a, w, args.Length >= 4 ? args[3] : null, new PayloadSidecar(null, null, warnings), warnings));
     return;
 }
 if (args[0] == "--check")
@@ -139,6 +139,128 @@ if (args[0] == "--audit")
     return;
 }
 
+// Summarize the actual saved output set after all dataset workers/retries finish.
+if (args[0] == "--coverage-summary")
+{
+    var missing = new HashSet<string>(File.ReadLines(args[3]).Where(line => line.Length > 0), StringComparer.Ordinal);
+    long labelled = 0, absent = 0;
+    foreach (string line in File.ReadLines(args[1]))
+    {
+        var fields = line.Split('\t');
+        if (fields.Length < 3) throw new InvalidDataException("Invalid index row");
+        missing.Remove(fields[0]);
+        foreach (string field in fields.Skip(1).Take(2).Where(field => Path.GetFileName(field) != "-"))
+        {
+            string file = Path.Combine(args[2], field);
+            if (!File.Exists(file)) { absent++; continue; }
+            if (CoverageAnnotations.HasWarning(file)) labelled++;
+        }
+    }
+    if (missing.Count > 0) coverageSummary.Warnings.Add("dataset omission", $"{missing.Count} input package paths have no exported index row");
+    if (absent > 0) coverageSummary.Warnings.Add("missing output files", $"{absent} indexed output files do not exist");
+    if (labelled > 0) coverageSummary.Warnings.Add("affected output files", $"{labelled} saved files contain concrete coverage warnings");
+    return;
+}
+
+// --annotate-index <index.tsv> <output root> [saved residue.tsv]: audit sources and label existing bodies only.
+if (args[0] == "--annotate-index")
+{
+    var saved = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+    if (args.Length > 3)
+        foreach (string line in File.ReadLines(args[3]))
+        {
+            var fields = line.Split('\t');
+            if (fields.Length < 5 || fields[0] is "done" or "index" or "fail") continue;
+            if (!saved.TryGetValue(fields[^1], out var rows)) saved[fields[^1]] = rows = new();
+            rows.Add(line);
+        }
+    int checkedCount = 0, changed = 0, failures = 0;
+    long nextProgress = Environment.TickCount64 + 10000;
+    object parseGate = new(); // Mapping scopes and native-parent caches belong to one package at a time.
+    var lines = System.Collections.Concurrent.Partitioner.Create(File.ReadLines(args[1]), System.Collections.Concurrent.EnumerablePartitionerOptions.NoBuffering);
+    System.Threading.Tasks.Parallel.ForEach(lines, new System.Threading.Tasks.ParallelOptions { MaxDegreeOfParallelism = 16 }, line =>
+    {
+        var fields = line.Split('\t');
+        try
+        {
+            if (fields.Length < 3) throw new InvalidDataException("Invalid index row");
+            var outputs = fields.Skip(1).Take(2).Where(field => Path.GetFileName(field) != "-")
+                .Select(field => Path.GetFullPath(Path.Combine(args[2], field))).ToArray();
+            if (outputs.Any(path => !path.StartsWith(Path.GetFullPath(args[2]) + "/", StringComparison.Ordinal))) throw new InvalidDataException("Output outside root");
+            if (outputs.Length > 0 && outputs.All(CoverageAnnotations.HasWarning))
+                coverageSummary.Warnings.Add("existing concrete warning", outputs[0]);
+            else
+            {
+                var textWarnings = new CoverageWarnings(summary: coverageSummary.Warnings);
+                foreach (string output in outputs.Where(path => path.EndsWith(".txt", StringComparison.Ordinal)))
+                    if (SavedCoverageInspector.FindTextOmission(output, textWarnings)) break;
+                var nativeWarnings = new CoverageWarnings(summary: coverageSummary.Warnings);
+                foreach (string output in outputs)
+                    if (SavedCoverageInspector.FindNativeOmission(output, nativeWarnings)) break;
+                if (outputs.All(path => CoverageAnnotations.HasWarning(path) || (path.EndsWith(".txt", StringComparison.Ordinal) ? textWarnings.Any : path.EndsWith(".native.json", StringComparison.Ordinal) && nativeWarnings.Any)))
+                {
+                    foreach (string path in outputs.Where(path => !CoverageAnnotations.HasWarning(path)))
+                        if (CoverageAnnotations.Apply(path, path.EndsWith(".txt", StringComparison.Ordinal) ? textWarnings : nativeWarnings)) System.Threading.Interlocked.Increment(ref changed);
+                    System.Threading.Interlocked.Increment(ref checkedCount);
+                    return;
+                }
+                // One observed omission establishes that the label applies. Probe the summary before decoding exports.
+                var asset = new UAsset(EngineVersion.UNKNOWN, mappings, CustomSerializationFlags.ReadOnlyStreaming);
+                using var summaryReader = new AssetBinaryReader(File.OpenRead(fields[0]), asset);
+                asset.ReadHeader(summaryReader);
+                var warnings = new CoverageWarnings(summary: coverageSummary.Warnings);
+                foreach (var diagnostic in asset.Coverage.Diagnostics)
+                    warnings.Add(diagnostic.Kind, fields[0] + ": " + diagnostic.Detail);
+                if (saved.TryGetValue(fields[0], out var rows)) foreach (var row in rows) warnings.WriteLine(row);
+                if (!warnings.Any)
+                {
+                    asset.ReadThumbnails(summaryReader);
+                    var image = asset.Thumbnails?.FirstOrDefault(pair => pair.Value.CompressedImageData?.Length > 0);
+                    if (image.HasValue && image.Value.Value != null)
+                        warnings.Add("opaque thumbnail payload", $"{fields[0]}: {image.Value.Key} retains {image.Value.Value.CompressedImageData.Length} compressed image bytes without decoding them");
+                }
+                if (!warnings.Any)
+                    foreach (string output in outputs.Where(path => path.EndsWith(".json", StringComparison.Ordinal)))
+                        if (SavedCoverageInspector.FindCollectionPruning(output, warnings)) break;
+                if (!warnings.Any)
+                {
+                    lock (parseGate)
+                    {
+                        asset = Load(fields[0], EngineVersion.UNKNOWN, mappings, CustomSerializationFlags.ReadOnlyStreaming);
+                        warnings = InspectCoverage(asset, fields[0], firstFinding: true);
+                        if (!warnings.Any)
+                        {
+                            if (outputs.Any(path => path.EndsWith(".txt", StringComparison.Ordinal))) TextDump.Write(asset, TextWriter.Null, textWarnings);
+                            if (outputs.Any(path => path.EndsWith(".native.json", StringComparison.Ordinal)))
+                                foreach (var export in asset.Exports.OfType<NormalExport>().Where(export => export.Data?.Count > 0))
+                                    nativeWarnings.Add("native tagged properties omitted", $"{export.ObjectName}: {export.Data.Count} tagged properties are excluded from the native view");
+                        }
+                        asset = null;
+                    }
+                }
+                foreach (string path in outputs)
+                    if (CoverageAnnotations.Apply(path, warnings.Any ? warnings : path.EndsWith(".txt", StringComparison.Ordinal) ? textWarnings : path.EndsWith(".native.json", StringComparison.Ordinal) ? nativeWarnings : warnings)) System.Threading.Interlocked.Increment(ref changed);
+            }
+            System.Threading.Interlocked.Increment(ref checkedCount);
+        }
+        catch (Exception ex)
+        {
+            System.Threading.Interlocked.Increment(ref failures);
+            coverageSummary.Warnings.Add("annotation failed", fields[0] + ": " + ex.Message.Split('\n')[0]);
+            Console.Error.WriteLine($"annotation-failed\t{fields[0]}\t{ex.GetType().Name}: {ex.Message.Split('\n')[0]}");
+        }
+        long now = Environment.TickCount64, previous = System.Threading.Interlocked.Read(ref nextProgress);
+        if (now >= previous && System.Threading.Interlocked.CompareExchange(ref nextProgress, now + 10000, previous) == previous)
+        {
+            Console.WriteLine($"Checked {checkedCount}; labelled {changed} files; failures {failures}");
+            Console.Out.Flush();
+        }
+    });
+    Console.WriteLine($"Finished: checked {checkedCount}; labelled {changed} files; failures {failures}");
+    Environment.ExitCode = failures == 0 ? 0 : 1;
+    return;
+}
+
 // --dataset <root> <out dir> <package>...: parses each package once and writes <out dir>/<path under root>.txt (--text)
 // and .native.json (--native, when any export has native data); prints the --audit lines, then an index line: index,
 // package, text file, native file or -, export count, residue count
@@ -155,10 +277,19 @@ if (args[0] == "--dataset")
             string rel = Path.GetRelativePath(root, Path.GetFullPath(path)), text = rel + ".txt", native = rel + ".native.json";
             Directory.CreateDirectory(Path.GetDirectoryName(Path.Combine(outDir, rel)));
             var warnings = InspectCoverage(asset, path, Console.Out);
-            using (var w = new StreamWriter(Path.Combine(outDir, text))) { warnings.WriteHeader(w); TextDump.Write(asset, w); }
-            bool any;
-            using (var w = new StreamWriter(Path.Combine(outDir, native))) { warnings.WriteHeader(w); any = WriteNative(asset, w, null, new PayloadSidecar(outDir, rel + ".payloads")); }
-            if (!any) { File.Delete(Path.Combine(outDir, native)); native = "-"; }
+            string textBody = Path.GetTempFileName(), nativeBody = Path.GetTempFileName();
+            try
+            {
+                var textWarnings = warnings.Fork();
+                var nativeWarnings = warnings.Fork();
+                using (var w = new StreamWriter(textBody)) TextDump.Write(asset, w, textWarnings);
+                bool any;
+                using (var w = new StreamWriter(nativeBody)) any = WriteNative(asset, w, null, new PayloadSidecar(outDir, rel + ".payloads", nativeWarnings), nativeWarnings);
+                textWarnings.WriteStagedBody(Path.Combine(outDir, text), textBody);
+                if (any) nativeWarnings.WriteStagedBody(Path.Combine(outDir, native), nativeBody);
+                else { File.Delete(Path.Combine(outDir, native)); native = "-"; }
+            }
+            finally { File.Delete(textBody); File.Delete(nativeBody); }
             int count = warnings.RecordCount;
             Console.WriteLine($"index\t{path}\t{text}\t{native}\t{asset.Exports.Count}\t{count}");
         }
@@ -167,25 +298,6 @@ if (args[0] == "--dataset")
         asset = null;
     }
     return;
-}
-
-static void Walk(object o, string cls, string name, string path, TextWriter w)
-{
-    switch (o)
-    {
-        case UAssetAPI.PropertyTypes.Objects.UnknownPropertyData u:
-            w.WriteLine($"rawprop\t{u.SerializingPropertyType?.Value ?? "?"}\t{u.Value?.Length ?? 0}\t{name}.{u.Name?.Value?.Value}\t{path}"); return;
-        case UAssetAPI.PropertyTypes.Structs.RawStructPropertyData rs:
-            w.WriteLine($"rawstruct\t{rs.StructType?.Value?.Value ?? "?"}\t{rs.Value?.Length ?? 0}\t{name}.{rs.Name?.Value?.Value}{(rs.FailureReason == null ? "" : $" [{rs.FailureReason}]")}\t{path}"); return;
-        case UAssetAPI.PropertyTypes.Objects.PropertyData pd:
-            if (pd is UAssetAPI.PropertyTypes.Structs.NativeFieldsPropertyData)
-                w.WriteLine($"audit-gap\t{cls}\t0\t{name}.{pd.Name}: native Fields are not traversed by the property audit\t{path}");
-            var v = pd.GetType().GetProperty("Value")?.GetValue(pd) ?? pd.GetType().GetField("Value")?.GetValue(pd);
-            if (v is UAssetAPI.PropertyTypes.Objects.PropertyData) Walk(v, cls, name, path, w);
-            else if (v is System.Collections.IDictionary d) { foreach (System.Collections.DictionaryEntry kv in d) { Walk(kv.Key, cls, name, path, w); Walk(kv.Value, cls, name, path, w); } }
-            else if (v is System.Collections.IEnumerable en && v is not string && v is not byte[]) foreach (var x in en) Walk(x, cls, name, path, w);
-            return;
-    }
 }
 
 // --scriptspan <package>...: per class default object, the export map's serial size and script serialization start and end
@@ -262,72 +374,43 @@ if (args[0] == "--write") { File.WriteAllBytes(args[2], Load(args[1], EngineVers
 
 var version = args.Length > 1 ? Enum.Parse<EngineVersion>(args[1]) : EngineVersion.UNKNOWN;
 var defaultAsset = Load(args[0], version, mappings);
-InspectCoverage(defaultAsset, args[0]).WriteJson(Console.Out, defaultAsset.SerializeJson(true));
+WriteJson(defaultAsset, null, InspectCoverage(defaultAsset, args[0]));
 
-CoverageWarnings InspectCoverage(UAsset asset, string path, TextWriter records = null)
+void WriteJson(UAsset asset, string path, CoverageWarnings warnings)
+{
+    warnings.WriteFile(path, w =>
+    {
+        var serializer = UAsset.CreateJsonSerializer();
+        asset.Info = "Serialized with " + UAPUtils.DisplayVersion;
+        serializer.Converters.Insert(0, new PayloadSidecar(null, null, warnings));
+        serializer.ContractResolver = new PayloadWarningResolver(serializer.ContractResolver, warnings);
+        serializer.Serialize(new Newtonsoft.Json.JsonTextWriter(w) { Formatting = Newtonsoft.Json.Formatting.Indented, CloseOutput = false }, asset);
+        return true;
+    }, json: true);
+}
+
+CoverageWarnings InspectCoverage(UAsset asset, string path, TextWriter records = null, bool firstFinding = false)
 {
     var warnings = new CoverageWarnings(records, coverageSummary.Warnings);
-    Audit(asset, path, warnings);
+    new CoverageInspector(path, warnings, firstFinding).Inspect(asset);
     return warnings;
 }
 
-void Audit(UAsset asset, string path, TextWriter o)
-{
-    for (int ei = 0; ei < asset.Exports.Count; ei++)
-    {
-        var e = asset.Exports[ei];
-        // a class defined in this package (a Blueprint's generated class) is named by its export
-        var cls = e.ClassIndex.IsExport() ? e.ClassIndex.ToExport(asset).ObjectName.ToString() : e.GetExportClassType()?.Value?.Value ?? "?";
-        var name = e.ObjectName?.ToString() ?? "?";
-        // a rig hierarchy keeps its bytes for writing; it counts as decoded when its parse read all of them
-        if (e is RigHierarchyExport rh)
-        {
-            o.WriteLine($"audit-gap\t{cls}\t0\t{name}: hierarchy fields are not exhaustively traversed\t{path}");
-            if (!rh.FullyParsed) o.WriteLine($"rigparse\t{cls}\t{rh.Data?.Length ?? 0}\t{name} [{rh.ParseFailure}]\t{path}");
-            else foreach (var c in rh.Components ?? new()) if (c.Payload.Length > 0) o.WriteLine($"rigcomponent\t{c.ScriptStruct}\t{c.Payload.Length}\t{name}.{c.Name}\t{path}");
-            continue;
-        }
-        if (e is RigVMExport vm)
-        {
-            o.WriteLine($"audit-gap\t{cls}\t0\t{name}: RigVM fields are not exhaustively traversed\t{path}");
-            if (!vm.FullyParsed) o.WriteLine($"rigparse\t{cls}\t{vm.Data?.Length ?? 0}\t{name} [{vm.ParseFailure}]\t{path}");
-            continue;
-        }
-        if (e is RawExport r)
-        {
-            var why = asset.ExportParseFailures.FirstOrDefault(f => f.ExportIndex == ei);
-            string reason = why == null ? "" : $" [{why.ExceptionType?.Split('.').Last()}: {why.ExceptionMessage?.Split('\n')[0]}]";
-            o.WriteLine($"raw\t{cls}\t{r.Data?.Length ?? 0}\t{name}{reason}\t{path}");
-            // UASSET_DETAILS prints each raw export's whole exception chain
-            if (why != null && Environment.GetEnvironmentVariable("UASSET_DETAILS") != null) o.WriteLine(why.ExceptionDetails);
-            continue;
-        }
-        // a class default object loads through UClass::SerializeDefaultObject, which reads only its tagged properties, so
-        // bytes after them never reach the engine: "cdotrail" keeps them apart from undecoded data the engine does read
-        if (e.Extras != null && e.Extras.Length > 0) o.WriteLine($"{(e.ObjectFlags.HasFlag(EObjectFlags.RF_ClassDefaultObject) ? "cdotrail" : "extras")}\t{cls}\t{e.Extras.Length}\t{name}{(e.NativeTailFailure == null ? "" : $" [{e.NativeTailFailure}]")}{(e.Extras.Length <= 16 ? " =" + Convert.ToHexString(e.Extras) : "")}\t{path}");
-        if (e is NormalExport n)
-        {
-            foreach (var p in n.Data ?? new()) Walk(p, cls, name, path, o);
-            if (n.SparseClassData != null || n.LeadingNative?.Length > 0)
-                o.WriteLine($"audit-gap\t{cls}\t0\t{name}: sparse class data or leading native fields are not exhaustively traversed\t{path}");
-        }
-        if (e.NativeTails != null) Blobs(e.NativeTails, cls, name, "", path, o, 0);
-    }
-}
-
-
-bool WriteNative(UAsset a, TextWriter w, string only, Newtonsoft.Json.JsonConverter payloads = null)
+bool WriteNative(UAsset a, TextWriter w, string only, Newtonsoft.Json.JsonConverter payloads = null, CoverageWarnings warnings = null)
 {
     // one compact JSON line per export after its header line; the tagged properties are --text's, so they're detached
     // rather than serialized and discarded
     var serializer = UAsset.CreateReadableJsonSerializer();
     if (payloads != null) serializer.Converters.Add(payloads);
+    if (warnings != null) serializer.ContractResolver = new PayloadWarningResolver(serializer.ContractResolver, warnings);
+    if (only != null && !a.Exports.Any(e => e.ObjectName.ToString() == only)) warnings?.Add("selected export missing", $"No export named {only} exists in the package.");
     bool any = false;
     for (int i = 0; i < a.Exports.Count; i++)
     {
         var e = a.Exports[i];
         if (only != null && e.ObjectName.ToString() != only) continue;
         var data = (e as NormalExport)?.Data;
+        if (data?.Count > 0) warnings?.Add("native tagged properties omitted", $"{e.ObjectName}: {data.Count} tagged properties are excluded from the native view");
         if (e is NormalExport detach) detach.Data = null;
         // serialized to a temporary file and copied token by token, so a mesh's index arrays never become a JToken tree
         string tmp = Path.GetTempFileName();
@@ -372,78 +455,50 @@ bool WriteNative(UAsset a, TextWriter w, string only, Newtonsoft.Json.JsonConver
     return any;
 }
 
-// Byte arrays kept inside decoded native data: "blob", the class, the size and the member path. A blob is either a
-// payload whose format is its own (pixels, compressed buffers, embedded files) or structure still to decode.
-static void Blobs(object v, string cls, string name, string at, string path, TextWriter w, int depth)
+}
+catch (Exception ex)
 {
-    if (v == null) return;
-    if (depth > 12)
-    {
-        w.WriteLine($"pruned-depth\t{cls}\t0\t{name}{at}: audit stopped at depth {depth} (limit 12)\t{path}");
-        return;
-    }
-    switch (v)
-    {
-        case byte[] b:
-            // FStripDataFlags kept as their two bytes are bitfields, not data
-            if (b.Length == 2 && at.EndsWith("StripFlags")) return;
-            if (b.Length > 0) w.WriteLine($"blob\t{cls}\t{b.Length}\t{name}{at}\t{path}");
-            return;
-        case UAssetAPI.ExportTypes.Payload pl:
-            if (pl.Data?.Length > 0) w.WriteLine($"payload\t{cls}:{pl.Format}\t{pl.Data.Length}\t{name}{at}\t{path}");
-            return;
-        case string or Enum or ValueType: return;
-        // values that hold no payload but refer back into the package
-        case UAsset or UAssetAPI.UnrealTypes.FName or UAssetAPI.UnrealTypes.FString or UAssetAPI.UnrealTypes.FPackageIndex: return;
-        case System.Collections.IDictionary d:
-            foreach (System.Collections.DictionaryEntry kv in d) Blobs(kv.Value, cls, name, $"{at}.{kv.Key}", path, w, depth + 1);
-            return;
-        case System.Collections.IEnumerable list:
-            int i = 0;
-            foreach (var x in list)
-            {
-                if (i >= 4097)
-                {
-                    w.WriteLine($"pruned-collection\t{cls}\t0\t{name}{at}: audit stopped after 4097 entries; more entries exist\t{path}");
-                    break;
-                }
-                Blobs(x, cls, name, $"{at}[{(i < 1 ? "0" : "*")}]", path, w, depth + 1);
-                i++;
-            }
-            return;
-    }
-    var type = v.GetType();
-    if (type.Namespace == null || !type.Namespace.StartsWith("UAssetAPI"))
-    {
-        w.WriteLine($"audit-gap\t{cls}\t0\t{name}{at}: uninspected object type {type.FullName}\t{path}");
-        return;
-    }
-    if (v is UAssetAPI.PropertyTypes.Objects.PropertyData)
-    {
-        w.WriteLine($"audit-gap\t{cls}\t0\t{name}{at}: nested native property is not traversed by the blob audit\t{path}");
-        return;
-    }
-    foreach (var f in type.GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance))
-        if (f.IsDefined(typeof(UAssetAPI.JSON.WriteBackCopyAttribute), true) || typeof(UAsset).IsAssignableFrom(f.FieldType)) continue;
-        else if (f.GetCustomAttributes(typeof(UAssetAPI.JSON.PayloadFormatAttribute), true).FirstOrDefault() is UAssetAPI.JSON.PayloadFormatAttribute fmt)
-        {
-            if (f.GetValue(v) is byte[] pb && pb.Length > 0) w.WriteLine($"payload\t{cls}:{fmt.Format}\t{pb.Length}\t{name}{at}.{f.Name}\t{path}");
-        }
-        else Blobs(f.GetValue(v), cls, name, $"{at}.{f.Name}", path, w, depth + 1);
+    coverageSummary.Warnings.Add("export invocation failed", ex.GetType().Name + ": " + ex.Message.Split('\n')[0]);
+    Console.Error.WriteLine(ex);
+    Environment.ExitCode = 1;
 }
 
 // Writes a payload over 64 KiB to <dir>/<SHA-1>.bin beside the native file and keeps its format, size, digest and file
 // name in the JSON; a smaller payload stays inline
-sealed class PayloadSidecar(string root, string dir) : Newtonsoft.Json.JsonConverter<UAssetAPI.ExportTypes.Payload>
+sealed class PayloadSidecar(string root, string dir, CoverageWarnings warnings) : Newtonsoft.Json.JsonConverter<UAssetAPI.ExportTypes.Payload>
 {
     public override void WriteJson(Newtonsoft.Json.JsonWriter w, UAssetAPI.ExportTypes.Payload p, Newtonsoft.Json.JsonSerializer s)
     {
+        warnings.Add("labelled payload emitted", $"{w.Path}: {p.Format} ({p.Data?.LongLength ?? 0} bytes)");
         w.WriteStartObject();
+        if (s.TypeNameHandling.HasFlag(Newtonsoft.Json.TypeNameHandling.Objects))
+        {
+            w.WritePropertyName("$type"); w.WriteValue(typeof(UAssetAPI.ExportTypes.Payload).FullName + ", UAssetAPI");
+        }
         w.WritePropertyName("Format"); w.WriteValue(p.Format);
-        if (p.Data == null || p.Data.Length <= 65536) { w.WritePropertyName("Data"); w.WriteValue(p.Data); w.WriteEndObject(); return; }
+        if (root == null || p.Data == null || p.Data.Length <= 65536) { w.WritePropertyName("Data"); w.WriteValue(p.Data); w.WriteEndObject(); return; }
         string sha = Convert.ToHexString(System.Security.Cryptography.SHA1.HashData(p.Data)), file = Path.Combine(dir, sha + ".bin");
         string full = Path.Combine(root, file);
-        if (!File.Exists(full)) { Directory.CreateDirectory(Path.GetDirectoryName(full)); File.WriteAllBytes(full, p.Data); }
+        bool matches = File.Exists(full) && new FileInfo(full).Length == p.Data.LongLength;
+        if (matches)
+        {
+            using var existing = File.OpenRead(full);
+            byte[] buffer = new byte[65536];
+            for (int offset = 0; offset < p.Data.Length;)
+            {
+                int count = Math.Min(buffer.Length, p.Data.Length - offset);
+                existing.ReadExactly(buffer.AsSpan(0, count));
+                if (!buffer.AsSpan(0, count).SequenceEqual(p.Data.AsSpan(offset, count))) { matches = false; break; }
+                offset += count;
+            }
+        }
+        if (!matches)
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(full));
+            string temporary = full + ".writing-" + Guid.NewGuid().ToString("N");
+            try { File.WriteAllBytes(temporary, p.Data); File.Move(temporary, full, true); }
+            finally { File.Delete(temporary); }
+        }
         w.WritePropertyName("Size"); w.WriteValue(p.Data.LongLength);
         w.WritePropertyName("Sha1"); w.WriteValue(sha);
         w.WritePropertyName("File"); w.WriteValue(file);
