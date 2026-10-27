@@ -905,8 +905,10 @@ namespace UAssetAPI.Unversioned
         {
             List<UsmapProperty> res = new List<UsmapProperty>();
             UsmapSchema relevantSchema = this.GetSchemaFromName(schemaName, asset, modulePath);
+            int superSteps = 0; // a class can't be its own ancestor; a loop here is corrupt or mixed mappings
             while (schemaName != null && relevantSchema != null)
             {
+                if (++superSteps > 512) throw new FormatException("Schema super chain loops at " + schemaName);
                 res.AddRange(relevantSchema.Properties.Values);
                 relevantSchema = this.GetSchemaFromName(relevantSchema.SuperType, asset, relevantSchema.SuperTypeModulePath, false);
             }
@@ -931,8 +933,10 @@ namespace UAssetAPI.Unversioned
             List<string> res = new List<string>();
             bool hasDoneFirst = false;
             UsmapSchema relevantSchema = this.GetSchemaFromName(schemaName, asset);
+            int superSteps = 0; // a class can't be its own ancestor; a loop here is corrupt or mixed mappings
             while (schemaName != null && relevantSchema != null)
             {
+                if (++superSteps > 512) throw new FormatException("Schema super chain loops at " + schemaName);
                 string schemaAnnotation = relevantSchema.FromAsset ? " (blueprint)" : string.Empty;
                 res.Add(headerPrefix + schemaName + schemaAnnotation + headerSuffix);
 
@@ -969,6 +973,21 @@ namespace UAssetAPI.Unversioned
 
         // not a set to ensure thread safety
         public ConcurrentDictionary<string, byte> PathsAlreadyProcessedForSchemas = new ConcurrentDictionary<string, byte>();
+
+        /// <summary>
+        /// Starts reading a new top-level asset: from now on schemas and enums added while reading assets (their own
+        /// class and struct exports, and those of the packages they import) belong to that asset only. The mappings'
+        /// own types stay; a type an earlier asset contributed is forgotten, as are the packages it pulled schemas from.
+        /// Call it before each asset when one Usmap reads assets of several projects.
+        /// </summary>
+        public void BeginAssetScope()
+        {
+            if (Schemas is ScopedDictionary<string, UsmapSchema> schemas) schemas.ClearScope();
+            else if (Schemas != null) Schemas = new ScopedDictionary<string, UsmapSchema>(Schemas);
+            if (EnumMap is ScopedDictionary<string, UsmapEnum> enums) enums.ClearScope();
+            else if (EnumMap != null) EnumMap = new ScopedDictionary<string, UsmapEnum>(EnumMap);
+            PathsAlreadyProcessedForSchemas.Clear();
+        }
         public UsmapSchema GetSchemaFromName(string nm, UAsset asset = null, string modulePath = null, bool throwExceptions = true)
         {
             if (string.IsNullOrEmpty(nm)) return null;
@@ -1019,8 +1038,10 @@ namespace UAssetAPI.Unversioned
             idx = 0;
             var schemaName = ancestry.Parent.ToString();
             UsmapSchema relevantSchema = this.GetSchemaFromName(schemaName, asset);
+            int superSteps = 0; // a class can't be its own ancestor; a loop here is corrupt or mixed mappings
             while (schemaName != null && relevantSchema != null)
             {
+                if (++superSteps > 512) throw new FormatException("Schema super chain loops at " + schemaName);
                 propDat = relevantSchema.GetProperty(propertyName.ToString(), dupIndex) as T;
                 if (propDat != null)
                 {
@@ -1063,8 +1084,10 @@ namespace UAssetAPI.Unversioned
 
             var schemaName = ancestry.Parent?.Value?.Value;
             UsmapSchema relevantSchema = this.GetSchemaFromName(schemaName, asset, null, false);
+            int superSteps = 0; // a class can't be its own ancestor; a loop here is corrupt or mixed mappings
             while (schemaName != null && relevantSchema != null)
             {
+                if (++superSteps > 512) throw new FormatException("Schema super chain loops at " + schemaName);
                 propDat = relevantSchema.GetProperty(propertyName.Value.Value, 0)?.PropertyData as T;
                 if (propDat != null) return true;
                 schemaName = relevantSchema.SuperType;
