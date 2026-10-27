@@ -48,6 +48,7 @@ sealed class CoverageWarnings : TextWriter
     // Keep standalone JSON valid: put the warning first, alongside the existing asset properties.
     public void WriteJson(TextWriter writer, string json)
     {
+        if (reasons.Count == 0) { writer.Write(json); return; }
         writer.Write("{\n\"CoverageWarnings\": [");
         writer.Write(JsonConvert.SerializeObject(Notice));
         foreach (var (reason, entry) in reasons)

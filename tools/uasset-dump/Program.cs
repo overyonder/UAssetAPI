@@ -71,14 +71,14 @@ if (args[0] == "--trace") { try { _ = Load(args[1], EngineVersion.UNKNOWN, mappi
 if (args[0] == "--failures") { var a = Load(args[1], EngineVersion.UNKNOWN, mappings, CustomSerializationFlags.ReadOnlyStreaming); foreach (var f in a.ExportParseFailures) Console.WriteLine($"{f.ObjectName}\t{f.ClassType}\n{f.ExceptionDetails}"); return; }
 // --json <package> <out.json>: every decoded export, for reading a reference asset's graphs, tables and settings
 if (args[0] == "--json") { var a = Load(args[1], EngineVersion.UNKNOWN, mappings, CustomSerializationFlags.ReadOnlyStreaming); var warnings = InspectCoverage(a, args[1]); using var w = new StreamWriter(args[2]); warnings.WriteJson(w, a.SerializeJson(true)); return; }
-if (args[0] == "--text") { var a = Load(args[1], EngineVersion.UNKNOWN, mappings, CustomSerializationFlags.ReadOnlyStreaming); var warnings = InspectCoverage(a, args[1]); warnings.Add("partial output", "Text output omits native fields; read the accompanying native output as well."); using var w = new StreamWriter(args[2]); warnings.WriteHeader(w); TextDump.Write(a, w); return; }
+if (args[0] == "--text") { var a = Load(args[1], EngineVersion.UNKNOWN, mappings, CustomSerializationFlags.ReadOnlyStreaming); var warnings = InspectCoverage(a, args[1]); using var w = new StreamWriter(args[2]); warnings.WriteHeader(w); TextDump.Write(a, w); return; }
 // --native <package> <out> [export]: per export, everything decoded outside its tagged properties (native class tails,
 // specialized export data, bytecode), as UAssetAPI's JSON without the tagged Data that --text prints
 if (args[0] == "--native")
 {
     var a = Load(args[1], EngineVersion.UNKNOWN, mappings, CustomSerializationFlags.ReadOnlyStreaming);
     var warnings = InspectCoverage(a, args[1]);
-    warnings.Add("partial output", "Native output omits tagged properties" + (args.Length >= 4 ? " and selects only one export." : "; read the accompanying text output as well."));
+    if (args.Length >= 4 && a.Exports.Count > 1) warnings.Add("selected export", "Only one of the package's exports is included.");
     using var w = new StreamWriter(args[2]);
     warnings.WriteHeader(w);
     WriteNative(a, w, args.Length >= 4 ? args[3] : null);
@@ -267,9 +267,6 @@ InspectCoverage(defaultAsset, args[0]).WriteJson(Console.Out, defaultAsset.Seria
 CoverageWarnings InspectCoverage(UAsset asset, string path, TextWriter records = null)
 {
     var warnings = new CoverageWarnings(records, coverageSummary.Warnings);
-    warnings.Add("coverage not proven", "The audit does not account for every source byte or validate decoded values against engine serializers.");
-    if (asset.CustomSerializationFlags.HasFlag(CustomSerializationFlags.ReadOnlyStreaming))
-        warnings.Add("streaming omissions", "Bulk data and package trailers are not fully inspected; external or virtualized payload contents are not verified.");
     Audit(asset, path, warnings);
     return warnings;
 }
