@@ -246,12 +246,24 @@ namespace UAssetAPI.ExportTypes
         static readonly Guid UE5MainStreamGuid = UAPUtils.GUID(0x697DD581, 0xE64F41AB, 0xAA4A51EC, 0xBEB7B628);
         const int SparseClassDataStructSerialization = 33;
 
-        /// <summary>Walks the class of a class through the package's import type hierarchy, else the mappings' super types.</summary>
+        /// <summary>Engine and engine-plugin classes deriving from UBlueprintGeneratedClass (UE 5.8 source), for packages
+        /// that carry no import type hierarchy and are read without mappings.</summary>
+        static readonly HashSet<string> EngineBlueprintGeneratedClasses = new()
+        {
+            "BlueprintGeneratedClass", "ActorModifierCoreGeneratedClass", "AnimBlueprintGeneratedClass",
+            "AvaSequenceDirectorGeneratedClass", "ControlRigBlueprintGeneratedClass", "DisplayClusterBlueprintGeneratedClass",
+            "MVVMInstancedViewModelGeneratedClass", "MVVMViewModelBlueprintGeneratedClass", "RenderGridBlueprintGeneratedClass",
+            "RigVMBlueprintGeneratedClass", "SceneStateGeneratedClass", "SceneStateTaskGeneratedClass",
+            "ScriptBlueprintGeneratedClass", "WidgetBlueprintGeneratedClass",
+        };
+
+        /// <summary>Walks the class of a class through the package's import type hierarchy, else the mappings' super types,
+        /// else the engine's own BlueprintGeneratedClass subclasses.</summary>
         static bool DerivesFromBlueprintGeneratedClass(UAsset asset, FPackageIndex classOfClass)
         {
             string name = classOfClass.ToImport(asset)?.ObjectName?.ToString();
             if (name == null) return false;
-            if (name == "BlueprintGeneratedClass") return true;
+            if (EngineBlueprintGeneratedClasses.Contains(name)) return true;
             if (asset.ImportTypeHierarchies != null && asset.ImportTypeHierarchies.TryGetValue(classOfClass, out var hierarchy))
             {
                 foreach (var super in hierarchy.SuperTypes) if (super.TypeName.ToString() == "BlueprintGeneratedClass") return true;
