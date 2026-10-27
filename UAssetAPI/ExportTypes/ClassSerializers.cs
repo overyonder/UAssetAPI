@@ -725,8 +725,8 @@ internal static class ClassSerializers
             if (skel < CombineSoftAndRigidVerts) throw new FormatException("section saved before FSkeletalMeshCustomVersion::CombineSoftAndRigidVerts");
             s["SoftVertices"] = ReadSoftSkinVertices(c, r, asset);
         }
-        if (anim < IncreaseBoneIndexLimitPerChunk) throw new FormatException("section saved before FAnimObjectVersion::IncreaseBoneIndexLimitPerChunk");
-        s["bUse16BitBoneIndex"] = c.Bool();
+        // older sections had 8-bit bone indices only and didn't serialize the flag (FSkelMeshSection::CalcUse16BitBoneIndex)
+        s["bUse16BitBoneIndex"] = anim < IncreaseBoneIndexLimitPerChunk ? false : c.Bool();
         s["BoneMap"] = c.Array(() => r.ReadUInt16(), 2);
         if (skel >= SaveNumVertices) s["NumVertices"] = r.ReadInt32();
         s["MaxBoneInfluences"] = r.ReadInt32();
