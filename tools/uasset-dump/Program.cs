@@ -11,6 +11,10 @@ using UAssetAPI.UnrealTypes;
 using UAssetAPI.Unversioned;
 
 using var coverageSummary = new CoverageWarningSummary();
+using var diagnosticOutput = new CoverageDiagnosticOutput(coverageSummary.Warnings,
+    args.Length > 0 && args[0] is "--trace" or "--failures" or "--classes" or "--scriptspan"
+        or "--versions" or "--cdos" or "--having" or "--usage" or "--names" or "--extras"
+        or "--exports" or "--sections" or "--check" or "--audit" or "--dataset" or "--annotate-index");
 try
 {
 

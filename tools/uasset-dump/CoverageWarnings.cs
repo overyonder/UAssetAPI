@@ -114,3 +114,35 @@ sealed class CoverageWarningSummary : IDisposable
     public readonly CoverageWarnings Warnings = new();
     public void Dispose() => Warnings.WriteHeader(Console.Error);
 }
+
+// Diagnostics can be redirected to files too. Stage their body so findings discovered
+// anywhere in the invocation precede the first output record, as they do for dump files.
+sealed class CoverageDiagnosticOutput : IDisposable
+{
+    readonly CoverageWarnings warnings;
+    readonly TextWriter previous;
+    readonly string body;
+    readonly StreamWriter writer;
+
+    internal CoverageDiagnosticOutput(CoverageWarnings warnings, bool enabled)
+    {
+        this.warnings = warnings;
+        if (!enabled) return;
+        previous = Console.Out;
+        body = Path.GetTempFileName();
+        writer = new StreamWriter(body);
+        Console.SetOut(writer);
+    }
+
+    public void Dispose()
+    {
+        if (writer == null) return;
+        Console.SetOut(previous);
+        try
+        {
+            writer.Dispose();
+            warnings.WriteStagedBody(null, body);
+        }
+        finally { File.Delete(body); }
+    }
+}
