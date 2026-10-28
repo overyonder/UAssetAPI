@@ -14,5 +14,5 @@ for b in "$out"/batch.[0-9][0-9][0-9][0-9]; do
     timeout 1800 xargs -d '\n' /nix/store/pkng7qyg6mxf77lrqlaal9s6igy35n4x-dotnet-sdk-wrapped-10.0.401/bin/dotnet "$tool/uasset-dump.dll" --audit < "$b" > "$b.tsv" 2> "$b.err"
   echo $? > "$b.status"
 done
-cat "$out"/batch.*.tsv > "$out/audit.tsv"
+/nix/store/pkng7qyg6mxf77lrqlaal9s6igy35n4x-dotnet-sdk-wrapped-10.0.401/bin/dotnet "$tool/uasset-dump.dll" --merge-diagnostics "$out"/batch.*.tsv > "$out/audit.tsv"
 echo "batches $(ls "$out"/*.status | wc -l), nonzero $(grep -L '^0$' "$out"/*.status | wc -l)"

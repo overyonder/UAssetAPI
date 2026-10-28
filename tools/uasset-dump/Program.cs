@@ -14,9 +14,30 @@ using var coverageSummary = new CoverageWarningSummary();
 using var diagnosticOutput = new CoverageDiagnosticOutput(coverageSummary.Warnings,
     args.Length > 0 && args[0] is "--trace" or "--failures" or "--classes" or "--scriptspan"
         or "--versions" or "--cdos" or "--having" or "--usage" or "--names" or "--extras"
-        or "--exports" or "--sections" or "--check" or "--audit" or "--audit-iostore-index" or "--dataset" or "--annotate-index");
+        or "--exports" or "--sections" or "--check" or "--audit" or "--audit-iostore-index" or "--dataset" or "--annotate-index" or "--merge-diagnostics");
 try
 {
+
+// Merge worker diagnostics without duplicating their headers inside the combined body.
+// Warning counts come from worker headers, which include formatter findings as well as audit records.
+if (args.Length > 0 && args[0] == "--merge-diagnostics")
+{
+    foreach (string source in args.Skip(1))
+        foreach (string line in File.ReadLines(source))
+        {
+            if (line == "# WARNING: " + CoverageWarnings.Notice) continue;
+            if (line.StartsWith("# ", StringComparison.Ordinal))
+            {
+                int close = line.IndexOf("): ", StringComparison.Ordinal);
+                int open = close < 0 ? -1 : line.LastIndexOf(" (", close, StringComparison.Ordinal);
+                if (open < 2 || !long.TryParse(line.AsSpan(open + 2, close - open - 2), out long count) || count <= 0)
+                    throw new InvalidDataException("Invalid worker coverage header in " + source + ": " + line);
+                coverageSummary.Warnings.Add(line[2..open], line[(close + 3)..], count);
+            }
+            else Console.WriteLine(line);
+        }
+    return;
+}
 
 // UASSET_USMAP names a .usmap whose native schemas resolve types that older property tags leave out
 // UASSET_PARENTS names a TSV of project C++ class and parent, read from their UCLASS declarations, for classes no
@@ -54,6 +75,16 @@ if (File.Exists(serializerCatalog))
         if (fields.Length != 3 || !byte.TryParse(fields[2], out byte flags) || (flags & ~7) != 0)
             throw new InvalidDataException("Invalid native serialization catalog entry: " + line);
         NativeClassTails.RegisterProjectSerialization(fields[0], fields[1], (flags & 1) != 0, (flags & 2) != 0, (flags & 4) == 0);
+    }
+string structSerializerCatalog = Environment.GetEnvironmentVariable("UASSET_STRUCT_SERIALIZERS")
+    ?? Path.Combine(AppContext.BaseDirectory, "project-struct-serializers.tsv");
+if (File.Exists(structSerializerCatalog))
+    foreach (string line in File.ReadLines(structSerializerCatalog))
+    {
+        string[] fields = line.Split('\t');
+        if (fields.Length != 3 || fields[2] is not ("0" or "1" or "2"))
+            throw new InvalidDataException("Invalid native struct serialization catalog entry: " + line);
+        UAssetAPI.PropertyTypes.Structs.NativeStructSerialization.RegisterProjectSerialization(fields[0], fields[1], fields[2] == "1", fields[2] != "2");
     }
 // UASSET_MAPS names TSVs, separated by ':', of owning type, property name, key struct and value struct for map
 // properties no mappings describe: project-maps.tsv from the project headers, and removed-maps.tsv for engine

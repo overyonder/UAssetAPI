@@ -28,12 +28,12 @@ sealed class CoverageWarnings : TextWriter
         return copy;
     }
 
-    public void Add(string reason, string example)
+    public void Add(string reason, string example, long count = 1)
     {
         lock (reasons)
             reasons[reason] = reasons.TryGetValue(reason, out var entry)
-                ? (entry.Count + 1, entry.Example) : (1, example);
-        summary?.Add(reason, example);
+                ? (checked(entry.Count + count), entry.Example) : (count, example);
+        summary?.Add(reason, example, count);
     }
 
     public override void WriteLine(string value)
