@@ -30,7 +30,7 @@ sealed class CoverageInspector(string package, TextWriter records, bool firstFin
     {
         foreach (var diagnostic in asset.Coverage.Diagnostics)
         {
-            Report(diagnostic.Kind, package, diagnostic.Detail + $" (occurrences: {diagnostic.Count})");
+            Report(diagnostic.Kind, package, $"occurrences: {diagnostic.Count}; example: {diagnostic.Detail}");
             if (firstFinding) return;
         }
         // Package-level fields are inspected too: thumbnails, bulk/trailer buffers and data-resource references.
@@ -48,9 +48,15 @@ sealed class CoverageInspector(string package, TextWriter records, bool firstFin
     {
         if (firstFinding && found) return;
         if (value == null) return;
+        if (value is float f && float.IsNaN(f) || value is double d && double.IsNaN(d))
+            Report("numeric-output-loss", path, "JSON represents this NaN as a string without its IEEE sign, signalling bit or payload bits");
+        if (value is PropertyData { HasCustomStructSerialization: true } custom)
+            Report("custom-serialization", path, $"encountered the custom binary property reader {custom.GetType().Name} for {custom.PropertyType}");
+        if (value is FObjectDataResource { SerialSize: > 0 } resource)
+            Report("unloaded-data-resource", path, $"data resource references {resource.SerialSize} stored bytes at offset {resource.SerialOffset}; the resource table does not load or decode its payload", resource.SerialSize);
         if (value is UnknownPropertyData unknown) { Report("rawprop", path, unknown.SerializingPropertyType?.ToString() ?? "unknown property", unknown.Value?.Length ?? 0); return; }
         if (value is RawStructPropertyData rawStruct) { Report("rawstruct", path, rawStruct.StructType + ": " + rawStruct.FailureReason, rawStruct.Value?.Length ?? 0); return; }
-        if (value is Payload payload) { if (payload.Data?.Length > 0) Report("payload", path, payload.Format, payload.Data.Length); return; }
+        if (value is Payload payload) { Report("payload", path, payload.Format, payload.Data?.Length ?? 0); return; }
         if (value is byte[] bytes)
         {
             if (bytes.Length > 0 && !(bytes.Length == 2 && path.EndsWith("StripFlags", StringComparison.Ordinal)))
@@ -132,7 +138,7 @@ sealed class CoverageInspector(string package, TextWriter records, bool firstFin
                 && System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(footer) == UAsset.UASSET_MAGIC) continue;
             if (property.AttributeProvider.GetAttributes(typeof(UAssetAPI.JSON.PayloadFormatAttribute), true).FirstOrDefault() is UAssetAPI.JSON.PayloadFormatAttribute format && member is byte[] payload)
             {
-                if (payload.Length > 0) Report("payload", path + "." + property.PropertyName, format.Format, payload.Length);
+                Report("payload", path + "." + property.PropertyName, format.Format, payload.Length);
             }
             else Visit(member, path + "." + property.PropertyName, depth + 1);
         }

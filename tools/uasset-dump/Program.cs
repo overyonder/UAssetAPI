@@ -52,7 +52,19 @@ Usmap mappings = null;
 UAsset Load(string path, EngineVersion version, Usmap map, CustomSerializationFlags flags = CustomSerializationFlags.None)
 {
     map?.BeginAssetScope();
-    try { return new UAsset(path, version, map, flags | CustomSerializationFlags.TrackReadCoverage); }
+    try
+    {
+        var asset = new UAsset(path, version, map, flags | CustomSerializationFlags.TrackReadCoverage);
+        // Diagnostic commands also need the decoder's findings in the invocation's final summary.
+        if (args[0] is "--trace" or "--failures" or "--classes" or "--scriptspan" or "--versions"
+            or "--cdos" or "--having" or "--usage" or "--names" or "--extras" or "--exports" or "--sections" or "--write")
+        {
+            InspectCoverage(asset, path);
+            if (args[0] != "--write")
+                coverageSummary.Warnings.Add("diagnostic output omits package fields", $"{path}: {args[0]} excludes the package's FolderName summary field from its diagnostic output");
+        }
+        return asset;
+    }
     catch (Exception ex)
     {
         coverageSummary.Warnings.Add("package load failed", path + ": " + ex.Message.Split('\n')[0]);
@@ -378,6 +390,8 @@ WriteJson(defaultAsset, null, InspectCoverage(defaultAsset, args[0]));
 
 void WriteJson(UAsset asset, string path, CoverageWarnings warnings)
 {
+    var nameOffset = typeof(UAsset).GetField("NameOffset", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+    warnings.Add("package summary member omitted", $"Package.NameOffset={nameOffset.GetValue(asset)}: the decoded source name-table offset is excluded from UAssetAPI's JSON contract");
     warnings.WriteFile(path, w =>
     {
         var serializer = UAsset.CreateJsonSerializer();
@@ -398,6 +412,7 @@ CoverageWarnings InspectCoverage(UAsset asset, string path, TextWriter records =
 
 bool WriteNative(UAsset a, TextWriter w, string only, Newtonsoft.Json.JsonConverter payloads = null, CoverageWarnings warnings = null)
 {
+    warnings?.Add("native package summary omitted", $"PackageFlags={a.PackageFlags}: the package summary flags are excluded from the native view");
     // one compact JSON line per export after its header line; the tagged properties are --text's, so they're detached
     // rather than serialized and discarded
     var serializer = UAsset.CreateReadableJsonSerializer();
@@ -419,28 +434,42 @@ bool WriteNative(UAsset a, TextWriter w, string only, Newtonsoft.Json.JsonConver
             using (var tw = new StreamWriter(tmp)) try { serializer.Serialize(new Newtonsoft.Json.JsonTextWriter(tw) { Formatting = Newtonsoft.Json.Formatting.None }, e); }
                 finally { if (e is NormalExport attach) attach.Data = data; }
             using var tr = new StreamReader(tmp);
-            var r = new Newtonsoft.Json.JsonTextReader(tr) { FloatParseHandling = Newtonsoft.Json.FloatParseHandling.Double, DateParseHandling = Newtonsoft.Json.DateParseHandling.None };
+            var r = new Newtonsoft.Json.JsonTextReader(tr) { FloatParseHandling = Newtonsoft.Json.FloatParseHandling.Double, DateParseHandling = Newtonsoft.Json.DateParseHandling.None, MaxDepth = null };
             Newtonsoft.Json.JsonTextWriter jw = null;
-            if (!r.Read() || r.TokenType != Newtonsoft.Json.JsonToken.StartObject) continue;
+            if (!r.Read() || r.TokenType != Newtonsoft.Json.JsonToken.StartObject) throw new InvalidDataException($"Native serializer did not produce an object for {e.ObjectName}.");
             while (r.Read() && r.TokenType == Newtonsoft.Json.JsonToken.PropertyName)
             {
                 string name = (string)r.Value;
-                if (!r.Read()) break;
-                if (Headers.Contains(name)) { r.Skip(); continue; }
+                if (!r.Read()) throw new EndOfStreamException($"Native serializer ended before {e.ObjectName}.{name}.");
+                if (Headers.Contains(name))
+                {
+                    warnings?.Add("native member omitted", $"{e.ObjectName}.{name}: the serialized export member is excluded from the native view");
+                    r.Skip();
+                    continue;
+                }
                 bool emptyArray = false;
                 if (r.TokenType == Newtonsoft.Json.JsonToken.StartArray)
                 {
-                    if (!r.Read()) break;
+                    if (!r.Read()) throw new EndOfStreamException($"Native serializer ended inside {e.ObjectName}.{name}.");
                     emptyArray = r.TokenType == Newtonsoft.Json.JsonToken.EndArray;
-                    if (emptyArray) continue;
+                    if (emptyArray)
+                    {
+                        warnings?.Add("native empty array omitted", $"{e.ObjectName}.{name}: the explicitly serialized empty array is excluded from the native view");
+                        continue;
+                    }
                     Open(); jw.WritePropertyName(name); jw.WriteStartArray();
-                    while (r.TokenType != Newtonsoft.Json.JsonToken.EndArray) { jw.WriteToken(r, true); r.Read(); }
+                    while (r.TokenType != Newtonsoft.Json.JsonToken.EndArray)
+                    {
+                        jw.WriteToken(r, true);
+                        if (!r.Read()) throw new EndOfStreamException($"Native serializer ended inside {e.ObjectName}.{name}.");
+                    }
                     jw.WriteEndArray();
                     continue;
                 }
                 Open(); jw.WritePropertyName(name); jw.WriteToken(r, true);
             }
             if (jw != null) { jw.WriteEndObject(); jw.Flush(); w.WriteLine(); any = true; }
+            else warnings?.Add("native export omitted", $"Export #{i + 1} {e.ObjectName}: no retained native members, so the export has no entry in this view");
 
             void Open()
             {

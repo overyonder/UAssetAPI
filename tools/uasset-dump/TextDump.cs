@@ -17,6 +17,7 @@ sealed class TextDump(CoverageWarnings warnings)
 
     void Write(UAsset a, TextWriter o)
     {
+        warnings.Add("text package summary omitted", $"PackageFlags={a.PackageFlags}: the package summary flags are not printed by the text formatter");
         // a link names its owning node, then the pin by id within that node
         string Link(EdGraphPinReference l)
         {
@@ -65,7 +66,8 @@ sealed class TextDump(CoverageWarnings warnings)
         var contract = UAsset.CreateReadableJsonSerializer().ContractResolver.ResolveContract(export.GetType()) as Newtonsoft.Json.Serialization.JsonObjectContract;
         foreach (var member in contract?.Properties.AsEnumerable() ?? Enumerable.Empty<Newtonsoft.Json.Serialization.JsonProperty>())
         {
-            if (member.Ignored || !member.Readable || member.DeclaringType == typeof(Export)) continue;
+            if (member.Ignored || !member.Readable) continue;
+            if (member.PropertyName is "ObjectName" or "ClassIndex" or "OuterIndex") continue;
             if (member.PropertyName is "Data" && export is NormalExport) continue;
             if (member.PropertyName is "SparseClassDataStruct" or "SparseClassData") continue;
             if (export is RigVMLinkExport && member.PropertyName is "SourcePinPath" or "TargetPinPath") continue;
@@ -73,8 +75,6 @@ sealed class TextDump(CoverageWarnings warnings)
             if (member.ShouldSerialize != null && !member.ShouldSerialize(export)) continue;
             var value = member.ValueProvider.GetValue(export);
             if (value == null || value is System.Collections.ICollection { Count: 0 }) continue;
-            // These are serializer control markers, rather than decoded native content.
-            if (member.PropertyName is "SerializationControl" or "Operation" or "HasLeadingFourNullBytes" or "HasNoTaggedProperties") continue;
             warnings.Add("text native member omitted", $"{export.ObjectName}.{member.PropertyName}: decoded {member.PropertyType.Name} is not printed by the text formatter");
         }
     }
