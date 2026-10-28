@@ -30,7 +30,11 @@ public class FShaderValueType
 
     public static FShaderValueType Read(AssetBinaryReader reader, int depth = 0)
     {
-        if (depth > 64) throw new FormatException("Shader value type nesting too deep");
+        if (depth > 64)
+        {
+            reader.Asset.Coverage.Report("pruned-depth", "Shader value type decoding stopped at depth 65 (limit 64).");
+            throw new FormatException("Shader value type nesting too deep");
+        }
         var result = new FShaderValueType { Type = (EShaderFundamentalType)reader.ReadByte() };
         if (HasDynamicArrayFlag(reader.Asset)) result.IsDynamicArray = reader.ReadBooleanInt();
         if (result.Type == EShaderFundamentalType.Struct)

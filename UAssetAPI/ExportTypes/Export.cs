@@ -237,6 +237,9 @@ namespace UAssetAPI.ExportTypes
                 this.CreateBeforeSerializationDependenciesSize = reader.ReadInt32();
                 this.SerializationBeforeCreateDependenciesSize = reader.ReadInt32();
                 this.CreateBeforeCreateDependenciesSize = reader.ReadInt32();
+                if (FirstExportDependencyOffset < -1 || SerializationBeforeSerializationDependenciesSize < 0 || CreateBeforeSerializationDependenciesSize < 0
+                    || SerializationBeforeCreateDependenciesSize < 0 || CreateBeforeCreateDependenciesSize < 0)
+                    Asset.Coverage.Report("invalid-export-dependency-metadata", $"{ObjectName}: dependency offset/count metadata contains values outside the nonnegative counts and -1 absent-offset sentinel; decoded dependency lists do not retain those invalid fields.");
             }
             if (!Asset.HasUnversionedProperties && Asset.ObjectVersionUE5 >= ObjectVersionUE5.SCRIPT_SERIALIZATION_OFFSET)
             {

@@ -841,7 +841,11 @@ internal static class ClassSerializers
     static object FieldNode(Cursor c, AssetBinaryReader r, byte fieldType, byte type, int depth)
     {
         if (type == 0) return null;
-        if (depth > 64) throw new FormatException("Field node tree nested too deeply");
+        if (depth > 64)
+        {
+            r.Asset.Coverage.Report("pruned-depth", "Field node tree decoding stopped at depth 65 (limit 64).");
+            throw new FormatException("Field node tree nested too deeply");
+        }
         object Child() => FieldNode(c, r, r.ReadByte(), r.ReadByte(), depth + 1);
         var n = new List<object> { fieldType, type, c.Name() };
         switch (type)
@@ -945,8 +949,18 @@ internal static class ClassSerializers
             Sizes: multiple ? c.Array(() => r.ReadUInt64(), 8) : new List<ulong> { r.ReadUInt64() },
             Type: r.ReadInt32(), Property: r.ReadUInt32(), Hash: r.ReadGuid()), 36);
         byte[] storage = c.Bytes64();
+        var interpreted = new List<(ulong Start, ulong End)>();
         d["Attributes"] = table.Select(e => new Dictionary<string, object> { ["Key"] = e.Key, ["Type"] = AttributeTypeName(e.Type),
-            ["Property"] = e.Property, ["Hash"] = e.Hash, ["Value"] = AttributeValue(e.Type, e.Offsets, e.Sizes, storage) }).ToList();
+            ["Property"] = e.Property, ["Hash"] = e.Hash, ["Value"] = AttributeValue(e.Type, e.Offsets, e.Sizes, storage, r, interpreted) }).ToList();
+        ulong consumed = 0;
+        foreach (var range in interpreted.OrderBy(range => range.Start))
+        {
+            if (range.Start > consumed)
+                asset.Coverage.Report("discarded-native-buffer", $"Interchange attribute storage bytes [{consumed}, {range.Start}) are not represented by decoded attributes.");
+            consumed = Math.Max(consumed, range.End);
+        }
+        if (consumed < (ulong)storage.LongLength)
+            asset.Coverage.Report("discarded-native-buffer", $"Interchange attribute storage bytes [{consumed}, {storage.LongLength}) are not represented by decoded attributes.");
         d["StorageSize"] = storage.LongLength;
         return d;
     }
@@ -985,19 +999,20 @@ internal static class ClassSerializers
         : AttributeArrayElement.TryGetValue(type, out int e) ? AttributeTypes[e].Name + "Array"
         : AttributeSpecial.TryGetValue(type, out var n) ? n : throw new FormatException($"Invalid attribute type {type}");
 
-    static object AttributeValue(int type, List<ulong> offsets, List<ulong> sizes, byte[] storage)
+    static object AttributeValue(int type, List<ulong> offsets, List<ulong> sizes, byte[] storage, AssetBinaryReader reader, List<(ulong Start, ulong End)> interpreted)
     {
         if (offsets.Count != sizes.Count) throw new FormatException("Attribute offsets and sizes differ in count");
         ReadOnlySpan<byte> At(int i)
         {
             if (offsets[i] > (ulong)storage.LongLength || sizes[i] > (ulong)storage.LongLength - offsets[i]) throw new FormatException("Attribute allocation outside the storage");
+            if (sizes[i] > 0) interpreted.Add((offsets[i], offsets[i] + sizes[i]));
             return storage.AsSpan((int)offsets[i], (int)sizes[i]);
         }
         string Text(int i)
         {
             var b = At(i);
             if (b.Length % 2 != 0 || b.Length < 2 || b[^1] != 0 || b[^2] != 0) throw new FormatException("Attribute string is not NUL-terminated UTF-16");
-            return System.Text.Encoding.Unicode.GetString(b[..^2]);
+            return reader.DecodeString(System.Text.Encoding.Unicode, b[..^2]);
         }
         object Elements(ReadOnlySpan<byte> b, string layout, int size, bool single)
         {
@@ -1604,6 +1619,8 @@ internal static class ClassSerializers
                         using Stream z = format == "Zlib" ? new System.IO.Compression.ZLibStream(new MemoryStream(chunk), System.IO.Compression.CompressionMode.Decompress)
                             : new System.IO.Compression.GZipStream(new MemoryStream(chunk), System.IO.Compression.CompressionMode.Decompress);
                         z.ReadExactly(plain);
+                        if (z.ReadByte() != -1)
+                            r.Asset.Coverage.Report("discarded-decompressed-data", $"{format} chunk produces more than its declared {us} bytes; excess decompressed data is not retained.");
                         break;
                     }
                     default: throw new FormatException($"Unsupported compression format {format}");

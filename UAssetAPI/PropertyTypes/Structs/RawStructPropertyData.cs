@@ -44,6 +44,7 @@ public class RawStructPropertyData : PropertyData<byte[]>
         }
 
         Value = reader.ReadBytes((int)leng1);
+        reader.Asset.Coverage.Report("opaque-struct-body", $"{Name}: {StructType} retains {Value.Length} struct body bytes without interpreting them.");
     }
 
     public override int Write(AssetBinaryWriter writer, bool includeHeader, PropertySerializationContext serializationContext = PropertySerializationContext.Normal)

@@ -123,7 +123,7 @@ namespace UAssetAPI
         /// written back.
         /// </summary>
         ReadOnlyStreaming = 32,
-        /// <summary>Collect concrete decoder omissions and unread source ranges for a coverage audit.</summary>
+        /// <summary>Compatibility flag: ordinary package reads now always audit unread source ranges.</summary>
         TrackReadCoverage = 64,
     }
 
@@ -1135,6 +1135,8 @@ namespace UAssetAPI
 
                 FName exportClassTypeName = Exports[i].GetExportClassType();
                 exportClassType = exportClassTypeName.Value.Value;
+                if (read && nextStarting != Exports[i].SerialOffset + Exports[i].SerialSize)
+                    Coverage.Report("export-range-mismatch", $"{Exports[i].ObjectName}: export table declares [{Exports[i].SerialOffset}, {Exports[i].SerialOffset + Exports[i].SerialSize}), but decoding uses end offset {nextStarting}.");
                 switch (exportClassType)
                 {
                     case "RigHierarchy":
@@ -1197,7 +1199,13 @@ namespace UAssetAPI
                         break;
                 }
 
-                if (read) Exports[i].Read(reader, (int)nextStarting);
+                if (read)
+                {
+                    if (Exports[i].GetType() != typeof(NormalExport))
+                        Coverage.Report("custom-serialization", $"{Exports[i].ObjectName}: encountered the custom binary export serializer {Exports[i].GetType().Name} for {exportClassType}.");
+                    else NativeClassTails.ReportSerializationEncounter(this, Exports[i]);
+                    Exports[i].Read(reader, (int)nextStarting);
+                }
 
                 // if we got a StructExport, let's modify mappings/MapStructTypeOverride if we can
                 if (read && Exports[i] is StructExport fetchedStructExp && Exports[i] is not FunctionExport)
@@ -1270,6 +1278,7 @@ namespace UAssetAPI
             catch (Exception ex)
             {
                 Export failedExport = Exports[i];
+                Coverage.Report("raw-export", $"{failedExport.ObjectName}: export decoding failed; {failedExport.SerialSize} bytes are retained without decoding: {ex.GetType().Name}: {ex.Message.Split('\n')[0]}");
                 long readerPosition;
                 try
                 {
@@ -2007,6 +2016,10 @@ namespace UAssetAPI
             int? legacyUE3Version = LegacyFileVersion != -4 ? reader.ReadInt32() : null;
 
             ObjectVersion fileVersionUE4 = (ObjectVersion)reader.ReadInt32();
+            if ((int)fileVersionUE4 < 0)
+                Coverage.Report("discarded-version", $"Negative UE4 object version {(int)fileVersionUE4} is treated as an unversioned package marker rather than retained.");
+            else if (!Enum.IsDefined(fileVersionUE4))
+                Coverage.Report("unrecognized-version", $"UE4 object version {(int)fileVersionUE4} is not defined by this decoder.");
             if (fileVersionUE4 > ObjectVersion.UNKNOWN)
             {
                 IsUnversioned = false;
@@ -2025,6 +2038,10 @@ namespace UAssetAPI
             if (LegacyFileVersion <= -8)
             {
                 ObjectVersionUE5 fileVersionUE5 = (ObjectVersionUE5)reader.ReadInt32();
+                if ((int)fileVersionUE5 < 0)
+                    Coverage.Report("discarded-version", $"Negative UE5 object version {(int)fileVersionUE5} is not retained.");
+                else if (!Enum.IsDefined(fileVersionUE5))
+                    Coverage.Report("unrecognized-version", $"UE5 object version {(int)fileVersionUE5} is not defined by this decoder.");
                 if (fileVersionUE5 > ObjectVersionUE5.UNKNOWN) ObjectVersionUE5 = fileVersionUE5;
             }
             if (ObjectVersionUE5 == ObjectVersionUE5.UNKNOWN && Mappings != null && Mappings.FileVersionUE5 > 0) ObjectVersionUE5 = Mappings.FileVersionUE5;
@@ -2056,12 +2073,12 @@ namespace UAssetAPI
 
             FolderName = reader.ReadFString();
             PackageFlags = (EPackageFlags)reader.ReadUInt32();
-            NameCount = reader.ReadInt32();
+            NameCount = reader.ReadCount();
             NameOffset = reader.ReadInt32();
 
             if (ObjectVersionUE5 >= ObjectVersionUE5.ADD_SOFTOBJECTPATH_LIST)
             {
-                SoftObjectPathsCount = reader.ReadInt32();
+                SoftObjectPathsCount = reader.ReadCount();
                 SoftObjectPathsOffset = reader.ReadInt32();
             }
 
@@ -2072,21 +2089,23 @@ namespace UAssetAPI
 
             if (ObjectVersion >= ObjectVersion.VER_UE4_SERIALIZE_TEXT_IN_PACKAGES)
             {
-                GatherableTextDataCount = reader.ReadInt32();
+                GatherableTextDataCount = reader.ReadCount();
                 GatherableTextDataOffset = reader.ReadInt32();
             }
 
-            ExportCount = reader.ReadInt32();
+            ExportCount = reader.ReadCount();
             ExportOffset = reader.ReadInt32(); // 61
-            ImportCount = reader.ReadInt32(); // 65
+            ImportCount = reader.ReadCount(); // 65
             ImportOffset = reader.ReadInt32(); // 69 (haha funny)
 
             if (ObjectVersionUE5 >= ObjectVersionUE5.VERSE_CELLS)
             {
-                CellExportCount = reader.ReadInt32();
+                CellExportCount = reader.ReadCount();
                 CellExportOffset = reader.ReadInt32();
-                CellImportCount = reader.ReadInt32();
+                CellImportCount = reader.ReadCount();
                 CellImportOffset = reader.ReadInt32();
+                if (CellExportCount > 0 || CellImportCount > 0)
+                    Coverage.Report("unparsed-section", $"Verse cell export/import maps contain {CellExportCount}/{CellImportCount} entries; this decoder reads their summary but does not parse their entries.");
             }
 
             if (ObjectVersionUE5 >= ObjectVersionUE5.METADATA_SERIALIZATION_OFFSET)
@@ -2097,7 +2116,7 @@ namespace UAssetAPI
             DependsOffset = reader.ReadInt32(); // 73
             if (ObjectVersion >= ObjectVersion.VER_UE4_ADD_STRING_ASSET_REFERENCES_MAP)
             {
-                SoftPackageReferencesCount = reader.ReadInt32(); // 77
+                SoftPackageReferencesCount = reader.ReadCount(); // 77
                 SoftPackageReferencesOffset = reader.ReadInt32(); // 81
             }
             if (ObjectVersion >= ObjectVersion.VER_UE4_ADDED_SEARCHABLE_NAMES)
@@ -2108,7 +2127,7 @@ namespace UAssetAPI
 
             if (ObjectVersionUE5 >= ObjectVersionUE5.IMPORT_TYPE_HIERARCHIES)
             {
-                ImportTypeHierarchiesCount = reader.ReadInt32();
+                ImportTypeHierarchiesCount = reader.ReadCount();
                 ImportTypeHierarchiesOffset = reader.ReadInt32();
             }
 
@@ -2132,7 +2151,7 @@ namespace UAssetAPI
             }
 
             Generations = new List<FGenerationInfo>();
-            int GenerationCount = reader.ReadInt32();
+            int GenerationCount = reader.ReadCount();
             for (int i = 0; i < GenerationCount; i++)
             {
                 int genNumExports = reader.ReadInt32();
@@ -2159,13 +2178,13 @@ namespace UAssetAPI
             }
 
             CompressionFlags = reader.ReadUInt32();
-            int numCompressedChunks = reader.ReadInt32();
+            int numCompressedChunks = reader.ReadCount();
             if (numCompressedChunks > 0) throw new FormatException("Asset has package-level compression and is likely too old to be parsed");
 
             PackageSource = reader.ReadUInt32();
 
             AdditionalPackagesToCook = new List<FString>();
-            int numAdditionalPackagesToCook = reader.ReadInt32();
+            int numAdditionalPackagesToCook = reader.ReadCount();
             for (int i = 0; i < numAdditionalPackagesToCook; i++)
             {
                 AdditionalPackagesToCook.Add(reader.ReadFString());
@@ -2173,7 +2192,7 @@ namespace UAssetAPI
 
             if (LegacyFileVersion > -7)
             {
-                int numTextureAllocations = reader.ReadInt32(); // unused
+                int numTextureAllocations = reader.ReadCount(); // unused
                 if (numTextureAllocations > 0) throw new FormatException("Asset has texture allocation info and is likely too old to be parsed");
             }
 
@@ -2202,7 +2221,9 @@ namespace UAssetAPI
 
             if (ObjectVersion >= ObjectVersion.VER_UE4_PRELOAD_DEPENDENCIES_IN_COOKED_EXPORTS)
             {
-                PreloadDependencyCount = reader.ReadInt32();
+                PreloadDependencyCount = reader.ReadInt32(); // -1 means the package has no preload dependency table
+                if (PreloadDependencyCount < -1)
+                    Coverage.Report("invalid-container-count", $"Preload dependency count {PreloadDependencyCount} is neither a nonnegative count nor the -1 sentinel.");
                 PreloadDependencyOffset = reader.ReadInt32();
             }
 
@@ -2210,6 +2231,19 @@ namespace UAssetAPI
             NamesReferencedFromExportDataCount = ObjectVersionUE5 >= ObjectVersionUE5.NAMES_REFERENCED_FROM_EXPORT_DATA ? reader.ReadInt32() : NameCount;
             PayloadTocOffset = ObjectVersionUE5 >= ObjectVersionUE5.PAYLOAD_TOC ? reader.ReadInt64() : -1;
             DataResourceOffset = ObjectVersionUE5 >= ObjectVersionUE5.DATA_RESOURCES ? reader.ReadInt32() : -1;
+            void CheckSection(string name, int count, long offset)
+            {
+                if (count > 0 && (offset <= 0 || offset >= reader.BaseStream.Length))
+                    Coverage.Report("unread-declared-section", $"{name} declares {count} entries at offset {offset}, outside the readable package data range (length {reader.BaseStream.Length}).");
+            }
+            CheckSection("Name map", NameCount, NameOffset);
+            CheckSection("Soft object paths", SoftObjectPathsCount, SoftObjectPathsOffset);
+            CheckSection("Gatherable text", GatherableTextDataCount, GatherableTextDataOffset);
+            CheckSection("Export map", ExportCount, ExportOffset);
+            CheckSection("Import map", ImportCount, ImportOffset);
+            CheckSection("Soft package references", SoftPackageReferencesCount, SoftPackageReferencesOffset);
+            CheckSection("Import type hierarchies", ImportTypeHierarchiesCount, ImportTypeHierarchiesOffset);
+            CheckSection("Preload dependencies", PreloadDependencyCount, PreloadDependencyOffset);
             if (CustomSerializationFlags.HasFlag(CustomSerializationFlags.ReadOnlyStreaming) && PayloadTocOffset > 0)
             {
                 long trailerEnd = BulkDataStartOffset > PayloadTocOffset ? BulkDataStartOffset : reader.BaseStream.Length;
@@ -2238,11 +2272,12 @@ namespace UAssetAPI
             reader.Asset = this;
             Coverage.Clear();
             CoverageReadStream coverageStream = null;
-            if (CustomSerializationFlags.HasFlag(CustomSerializationFlags.TrackReadCoverage))
+            if (reader.GetType() == typeof(AssetBinaryReader))
             {
                 coverageStream = new CoverageReadStream(reader.BaseStream, Coverage);
                 reader = new AssetBinaryReader(coverageStream, reader.LoadUexp, this);
             }
+            else Coverage.Report("source-audit-skipped", $"Unread-source range inspection was skipped for custom reader {reader.GetType().FullName}; replacing that reader would discard its overridden archive behavior.");
             try { ReadContents(reader, manualSkips, forceReads); }
             finally { coverageStream?.ReportUnreadRanges(); }
         }
@@ -2270,7 +2305,16 @@ namespace UAssetAPI
                 {
                     nameInMap.IsCasePreserving = false;
                 }
+                if (WillSerializeNameHashes == true)
+                {
+                    bool disableCasePreservingHash = !nameInMap.IsCasePreserving && GetCustomVersion<FReleaseObjectVersion>() < FReleaseObjectVersion.PropertiesSerializeRepCondition;
+                    uint expectedHash = CRCGenerator.GenerateHash(nameInMap, disableCasePreservingHash, GetEngineVersion() == EngineVersion.VER_UE4_20);
+                    if (hashes != expectedHash)
+                        Coverage.Report("discarded-name-hash", $"Name map entry {i} ({nameInMap}) has hash 0x{hashes:X8}, not the derived 0x{expectedHash:X8}; the original hash is not represented in decoded JSON.");
+                }
                 AddNameReference(nameInMap, true, true);
+                if (!nameInMap.IsCasePreserving)
+                    Coverage.Report("name-case-metadata-omitted", $"Name map entry {i} ({nameInMap}) was decoded with case-preserving hashes disabled; FString's JSON representation does not retain that hash-mode flag.");
             }
 
             SoftObjectPathList = null;
@@ -2304,7 +2348,7 @@ namespace UAssetAPI
                     var sourceData = new FTextSourceData { SourceString = sourceString, SourceStringMetaData = sourceStringMetaData };
 
                     var contexts = new List<FTextSourceSiteContext>();
-                    var contextsCount = reader.ReadInt32();
+                    var contextsCount = reader.ReadCount();
                     for (var j = 0; j < contextsCount; j++)
                     {
                         var keyName = reader.ReadFString();
@@ -2412,7 +2456,7 @@ namespace UAssetAPI
                     AssetRegistryDependencyDataOffset = reader.ReadInt64();
                 }
 
-                int numAssets = reader.ReadInt32();
+                int numAssets = reader.ReadCount();
                 AssetRegistryRecords = [];
                 for (int i = 0; i < numAssets; i++)
                 {
@@ -2421,7 +2465,7 @@ namespace UAssetAPI
                     record.Path = reader.ReadString();
                     record.ClassName = reader.ReadString();
 
-                    int tagNum = reader.ReadInt32();
+                    int tagNum = reader.ReadCount();
                     record.TagMap = [];
                     for (int j = 0; j < tagNum; ++j)
                     {
@@ -2488,11 +2532,18 @@ namespace UAssetAPI
             }
 
             // PreloadDependencies
+            var dependencyRanges = new List<(long Start, long End)>();
             if (PreloadDependencyOffset > 0) reader.BaseStream.Seek(PreloadDependencyOffset, SeekOrigin.Begin); // needed so that we're at a sensible offset for AppendedNullBytes if no preload deps
             for (int i = 0; i < Exports.Count; i++)
             {
-                if (PreloadDependencyOffset <= 0) continue;
-                if (Exports[i].FirstExportDependencyOffset < 0) continue; // not <= 0
+                if (PreloadDependencyOffset <= 0 || Exports[i].FirstExportDependencyOffset < 0)
+                {
+                    var skipped = Exports[i];
+                    if (skipped.SerializationBeforeSerializationDependenciesSize > 0 || skipped.CreateBeforeSerializationDependenciesSize > 0
+                        || skipped.SerializationBeforeCreateDependenciesSize > 0 || skipped.CreateBeforeCreateDependenciesSize > 0)
+                        Coverage.Report("skipped-preload-dependencies", $"{skipped.ObjectName}: declared dependency groups are not read because the package offset is {PreloadDependencyOffset} and the export's first dependency offset is {skipped.FirstExportDependencyOffset}.");
+                    continue;
+                }
                 this.UsesEventDrivenLoader = true;
 
                 reader.BaseStream.Seek(PreloadDependencyOffset, SeekOrigin.Begin);
@@ -2509,7 +2560,23 @@ namespace UAssetAPI
 
                 Exports[i].CreateBeforeCreateDependencies = new List<FPackageIndex>(Exports[i].CreateBeforeCreateDependenciesSize);
                 for (int j = 0; j < Exports[i].CreateBeforeCreateDependenciesSize; j++) Exports[i].CreateBeforeCreateDependencies.Add(FPackageIndex.FromRawIndex(reader.ReadInt32()));
+                long dependencyEnd = (long)Exports[i].FirstExportDependencyOffset + Exports[i].SerializationBeforeSerializationDependenciesSize
+                    + Exports[i].CreateBeforeSerializationDependenciesSize + Exports[i].SerializationBeforeCreateDependenciesSize + Exports[i].CreateBeforeCreateDependenciesSize;
+                if (dependencyEnd > Exports[i].FirstExportDependencyOffset)
+                    dependencyRanges.Add((Exports[i].FirstExportDependencyOffset, dependencyEnd));
             }
+            long inspectedDependencyEnd = 0;
+            foreach (var range in dependencyRanges.OrderBy(range => range.Start))
+            {
+                if (range.End > PreloadDependencyCount)
+                    Coverage.Report("dependency-table-range-mismatch", $"Decoded dependency entries [{range.Start}, {range.End}) exceed the package's declared preload dependency count {PreloadDependencyCount}.");
+                long boundedStart = Math.Min(range.Start, Math.Max(0, PreloadDependencyCount));
+                if (boundedStart > inspectedDependencyEnd)
+                    Coverage.Report("uninspected-dependency-entries", $"Declared preload dependency entries [{inspectedDependencyEnd}, {boundedStart}) are not represented by any decoded export dependency group.");
+                inspectedDependencyEnd = Math.Max(inspectedDependencyEnd, range.End);
+            }
+            if (inspectedDependencyEnd < PreloadDependencyCount)
+                Coverage.Report("uninspected-dependency-entries", $"Declared preload dependency entries [{inspectedDependencyEnd}, {PreloadDependencyCount}) are not represented by any decoded export dependency group.");
 
             // DataResources (5.3+)
             DataResources = null;
@@ -2518,8 +2585,10 @@ namespace UAssetAPI
                 DataResources = new List<FObjectDataResource>();
                 reader.BaseStream.Seek(DataResourceOffset, SeekOrigin.Begin);
                 DataResourceVersion = (EObjectDataResourceVersion)reader.ReadUInt32();
+                if (DataResourceVersion > EObjectDataResourceVersion.Latest)
+                    Coverage.Report("unrecognized-version", $"Data-resource version {(uint)DataResourceVersion} is newer than the decoder's version {(uint)EObjectDataResourceVersion.Latest}.");
 
-                int count = reader.ReadInt32();
+                int count = reader.ReadCount();
                 for (int i = 0; i < count; i++)
                 {
                     EObjectDataResourceFlags Flags = (EObjectDataResourceFlags)reader.ReadUInt32();
@@ -2538,6 +2607,8 @@ namespace UAssetAPI
                     uint LegacyBulkDataFlags = reader.ReadUInt32();
 
                     DataResources.Add(new FObjectDataResource(Flags, SerialOffset, DuplicateSerialOffset, SerialSize, RawSize, OuterIndex, LegacyBulkDataFlags, CookedIndex));
+                    if (SerialSize > 0)
+                        Coverage.Report("unloaded-data-resource", $"Data resource {i} references {SerialSize} stored bytes at offset {SerialOffset}; reading its resource-table entry does not load or decode that payload.");
                 }
             }
 
@@ -2612,7 +2683,7 @@ namespace UAssetAPI
                 // convert all exports as appropriate, but do no further reading
                 for (int i = 0; i < Exports.Count; i++)
                 {
-                    if (Exports[i].SerialSize > 0) Coverage.Report("skipped-export", $"{Exports[i].ObjectName}: export data was not loaded ({Exports[i].SerialSize} source bytes).");
+                    Coverage.Report("skipped-export", $"{Exports[i].ObjectName}: export inspection was disabled ({Exports[i].SerialSize} declared source bytes).");
                     if (manualSkips != null && manualSkips.Contains(i) && (forceReads == null || !forceReads.Contains(i)))
                     {
                         Exports[i] = Exports[i].ConvertToChildExport<RawExport>();
@@ -2628,12 +2699,12 @@ namespace UAssetAPI
             {
                 SearchableNames = new SortedDictionary<FPackageIndex, List<FName>>();
                 reader.BaseStream.Seek(SearchableNamesOffset, SeekOrigin.Begin);
-                var searchableNamesCount = reader.ReadInt32();
+                var searchableNamesCount = reader.ReadCount();
 
                 for (int i = 0; i < searchableNamesCount; i++)
                 {
                     var collectionIndex = reader.ReadInt32();
-                    var collectionCount = reader.ReadInt32();
+                    var collectionCount = reader.ReadCount();
                     var searchableCollection = new List<FName>();
                     for (int j = 0; j < collectionCount; j++)
                     {
@@ -2662,6 +2733,18 @@ namespace UAssetAPI
             }
 
             ReadThumbnails(reader);
+            if (reader.LoadUexp)
+                foreach (var export in Exports)
+                {
+                    if (!export.alreadySerialized && export.SerialSize > 0 && export is not RawExport)
+                        Coverage.Report("unparsed-export", $"{export.ObjectName}: {export.SerialSize} declared export bytes were not passed through an export decoder.");
+                    if (export is RawExport && export is not RigHierarchyExport { FullyParsed: true } && export is not RigVMExport { FullyParsed: true })
+                        Coverage.Report("opaque-export", $"{export.ObjectName}: its body remains a raw export without a decoded representation ({export.SerialSize} declared source bytes).");
+                    if (export.Extras?.Length > 0)
+                        Coverage.Report("opaque-export-tail", $"{export.ObjectName}: {export.Extras.Length} trailing export bytes remain without a decoded representation.");
+                    if (export is NormalExport { LeadingNative.Length: > 0, LeadingFields: null } normal)
+                        Coverage.Report("opaque-export-prefix", $"{export.ObjectName}: {normal.LeadingNative.Length} leading native bytes remain without a decoded representation.");
+                }
         }
 
         /// <summary>Read the package's thumbnail table and images independently of its exports.</summary>
@@ -2671,7 +2754,7 @@ namespace UAssetAPI
             if (ThumbnailTableOffset > 0)
             {
                 reader.BaseStream.Seek(ThumbnailTableOffset, SeekOrigin.Begin);
-                var thumbnailCount = reader.ReadInt32();
+                var thumbnailCount = reader.ReadCount();
                 var thumbnailOffsets = new Dictionary<string, int>();
                 for (int i = 0; i < thumbnailCount; i++)
                 {
@@ -2684,6 +2767,8 @@ namespace UAssetAPI
 
                     var fileOffset = reader.ReadInt32();
 
+                    if (thumbnailOffsets.ContainsKey(objectName))
+                        Coverage.Report("duplicate-thumbnail", $"Thumbnail table entry {i} ({objectName}) replaces an earlier entry at offset {thumbnailOffsets[objectName]} with offset {fileOffset}.");
                     thumbnailOffsets[objectName] = fileOffset;
                 }
 
@@ -2700,7 +2785,15 @@ namespace UAssetAPI
         {
             var bitCount = reader.ReadInt32();
             int length = ComputeBitArrayDataLenth(bitCount);
-            return new BitArray(reader.ReadBytes(length)) { Length = bitCount };
+            var bits = new BitArray(reader.ReadBytes(length));
+            for (int i = bitCount; i < bits.Length; i++)
+                if (bits[i])
+                {
+                    reader.Asset.Coverage.Report("discarded-padding-bits", $"Package bit array has set bits beyond its declared length {bitCount}; shortening it discards them.");
+                    break;
+                }
+            bits.Length = bitCount;
+            return bits;
         }
         private static int BitsToNumWords(int bitCount)
         {

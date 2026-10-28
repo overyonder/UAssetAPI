@@ -41,6 +41,7 @@ public class EnumPropertyData : PropertyData<FName>
             if (reader.Asset.Mappings.EnumMap.TryGetValue(enumDat1.Name, out UsmapEnum mappedEnum) && mappedEnum.IsPlaceholder)
             {
                 reader.Asset.MissingEnumMappings.Add(enumDat1.Name);
+                reader.Asset.Coverage.Report("unresolved-enum", $"{Name}: enum {enumDat1.Name} has a placeholder mapping; its declared members are unavailable.");
             }
         }
 
@@ -71,11 +72,13 @@ public class EnumPropertyData : PropertyData<FName>
                 if (enumIndice < listOfValues.Count)
                 {
                     Value = FName.DefineDummy(reader.Asset, listOfValues[enumIndice]);
+                    ReportAmbiguousValue(reader, listOfValues, enumIndice);
                 }
                 else
                 {
                     // fallback
                     Value = FName.DefineDummy(reader.Asset, InvalidEnumIndexFallbackPrefix + enumIndice.ToString());
+                    reader.Asset.Coverage.Report("unresolved-enum", $"{Name}: enum {EnumType} has no mapped member for {enumIndice}; a numeric fallback label is emitted.");
                 }
                 return;
             }
@@ -105,11 +108,13 @@ public class EnumPropertyData : PropertyData<FName>
                 if (enumIndice < listOfValues.Count)
                 {
                     Value = FName.DefineDummy(reader.Asset, listOfValues[enumIndice]);
+                    ReportAmbiguousValue(reader, listOfValues, enumIndice);
                 }
                 else
                 {
                     // fallback
                     Value = FName.DefineDummy(reader.Asset, InvalidEnumIndexFallbackPrefix + enumIndice.ToString());
+                    reader.Asset.Coverage.Report("unresolved-enum", $"{Name}: enum {EnumType} has no mapped member for {enumIndice}; a numeric fallback label is emitted.");
                 }
                 return;
             }
@@ -130,6 +135,12 @@ public class EnumPropertyData : PropertyData<FName>
         }
 
         Value = reader.ReadFName();
+    }
+
+    void ReportAmbiguousValue(AssetBinaryReader reader, IDictionary<long, string> values, long index)
+    {
+        if (values.Any(entry => entry.Key != index && entry.Value == values[index]))
+            reader.Asset.Coverage.Report("ambiguous-enum-output", $"{Name}: enum {EnumType} maps numeric value {index} and another value to the same name {values[index]}; decoded output retains the name without the original numeric value.");
     }
 
     public override int Write(AssetBinaryWriter writer, bool includeHeader, PropertySerializationContext serializationContext = PropertySerializationContext.Normal)
@@ -235,6 +246,7 @@ public class EnumPropertyData : PropertyData<FName>
             {
                 // fallback
                 Value = FName.DefineDummy(reader.Asset, InvalidEnumIndexFallbackPrefix + enumIndice.ToString());
+                reader.Asset.Coverage.Report("unresolved-enum", $"{Name}: enum {EnumType} has no mapped member for its zero value; a numeric fallback label is emitted.");
             }
         }
     }

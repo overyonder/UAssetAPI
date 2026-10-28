@@ -111,6 +111,8 @@ public sealed class RigVMObjectArchiveReader : AssetBinaryReader
             var output = new byte[uncompressedSize];
             using var z = new ZLibStream(new MemoryStream(buffer, false), CompressionMode.Decompress);
             z.ReadExactly(output);
+            if (z.ReadByte() != -1)
+                asset.Coverage.Report("discarded-decompressed-data", $"RigVM object archive produces more than its declared {uncompressedSize} bytes; excess decompressed data is not retained.");
             buffer = output;
         }
         var saved = asset.CustomVersionContainer;

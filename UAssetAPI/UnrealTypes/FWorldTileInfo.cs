@@ -40,7 +40,7 @@ namespace UAssetAPI.UnrealTypes
 
             if (asset.ObjectVersion >= ObjectVersion.VER_UE4_WORLD_LAYER_ENABLE_DISTANCE_STREAMING)
             {
-                DistanceStreamingEnabled = reader.ReadInt32() == 1;
+                DistanceStreamingEnabled = reader.ReadBooleanInt();
             }
         }
 
@@ -182,7 +182,7 @@ namespace UAssetAPI.UnrealTypes
 
             if (asset.ObjectVersion >= ObjectVersion.VER_UE4_WORLD_LEVEL_INFO_UPDATED)
             {
-                bHideInTileView = reader.ReadInt32() == 1;
+                bHideInTileView = reader.ReadBooleanInt();
                 ParentTilePackageName = reader.ReadFString();
             }
 

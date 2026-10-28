@@ -267,7 +267,11 @@ public class TextPropertyData : PropertyData<FString>
 
     public override void Read(AssetBinaryReader reader, bool includeHeader, long leng1, long leng2 = 0, PropertySerializationContext serializationContext = PropertySerializationContext.Normal)
     {
-        if (reader.TextHistoryDepth >= 64) throw new FormatException($"FText recursion limit at byte {reader.BaseStream.Position}");
+        if (reader.TextHistoryDepth >= 64)
+        {
+            reader.Asset.Coverage.Report("pruned-depth", $"FText decoding stopped at nesting level 64, byte {reader.BaseStream.Position}.");
+            throw new FormatException($"FText recursion limit at byte {reader.BaseStream.Position}");
+        }
         reader.TextHistoryDepth++;
         try { ReadText(reader, includeHeader, leng1, leng2, serializationContext); }
         finally { reader.TextHistoryDepth--; }
@@ -326,6 +330,8 @@ public class TextPropertyData : PropertyData<FString>
                         if (bHasCultureInvariantString)
                         {
                             CultureInvariantString = reader.ReadFString();
+                            if (CultureInvariantString == null)
+                                reader.Asset.Coverage.Report("discarded-value", $"{Name}: FText's has-culture-invariant-string flag is true but its string is null; the flag is not retained independently of the string.");
                         }
                     }
                     break;
@@ -393,7 +399,11 @@ public class TextPropertyData : PropertyData<FString>
 
     public override int Write(AssetBinaryWriter writer, bool includeHeader, PropertySerializationContext serializationContext = PropertySerializationContext.Normal)
     {
-        if (writer.TextHistoryDepth >= 64) throw new FormatException($"FText recursion limit at byte {writer.BaseStream.Position}");
+        if (writer.TextHistoryDepth >= 64)
+        {
+            writer.Asset.Coverage.Report("pruned-depth", $"FText writing stopped at nesting level 64, byte {writer.BaseStream.Position}.");
+            throw new FormatException($"FText recursion limit at byte {writer.BaseStream.Position}");
+        }
         writer.TextHistoryDepth++;
         try { return WriteText(writer, includeHeader, serializationContext); }
         finally { writer.TextHistoryDepth--; }

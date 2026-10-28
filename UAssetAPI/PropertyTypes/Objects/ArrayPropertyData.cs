@@ -124,6 +124,7 @@ public class ArrayPropertyData : PropertyData<PropertyData[]>
 
             FName name = this.Name;
             long structLength = 1;
+            bool hasInnerLength = false;
             FName fullType = FName.DefineDummy(reader.Asset, "Generic");
             Guid structGUID = new Guid();
 
@@ -142,7 +143,7 @@ public class ArrayPropertyData : PropertyData<PropertyData[]>
                 name = reader.ReadFName();
                 if (name.Value.Value.Equals("None"))
                 {
-                    if (numEntries > 0) reader.Asset.Coverage.Report("untyped-array", $"{Name}: {numEntries} struct array elements were not read because the inner property name is None.");
+                    reader.Asset.Coverage.Report("untyped-array", $"{Name}: the inner property name is {name}; its header and {numEntries} struct array elements are not decoded.");
                     Value = results;
                     return;
                 }
@@ -150,14 +151,19 @@ public class ArrayPropertyData : PropertyData<PropertyData[]>
                 FName thisArrayType = reader.ReadFName();
                 if (thisArrayType.Value.Value.Equals("None"))
                 {
-                    if (numEntries > 0) reader.Asset.Coverage.Report("untyped-array", $"{Name}: {numEntries} struct array elements were not read because the inner property type is None.");
+                    reader.Asset.Coverage.Report("untyped-array", $"{Name}: the inner property type is {thisArrayType}; its header and {numEntries} struct array elements are not decoded.");
                     Value = results;
                     return;
                 }
 
                 if (thisArrayType.Value.Value != ArrayType.Value.Value) throw new FormatException("Invalid array type: " + thisArrayType.ToString() + " vs " + ArrayType.ToString());
+                if (thisArrayType.Number != ArrayType.Number)
+                    reader.Asset.Coverage.Report("discarded-value", $"{Name}: inner array type {thisArrayType} has a different numeric suffix from {ArrayType}; the inner suffix is not retained.");
 
                 structLength = reader.ReadInt64(); // length value
+                hasInnerLength = true;
+                if ((structLength >> 32) != 0)
+                    reader.Asset.Coverage.Report("discarded-value", $"{Name}: inner array tag index {structLength >> 32} is consumed as part of the length word rather than retained as an index.");
                 fullType = reader.ReadFName();
                 structGUID = reader.ReadGuid();
                 if (reader.ReadPropertyGuid() is Guid)
@@ -177,6 +183,12 @@ public class ArrayPropertyData : PropertyData<PropertyData[]>
                 }
             }
 
+            long elementsStart = reader.BaseStream.Position;
+            void CheckInnerLength()
+            {
+                if (hasInnerLength && reader.BaseStream.Position - elementsStart != unchecked((int)structLength))
+                    reader.Asset.Coverage.Report("array-size-mismatch", $"{Name}: inner tag declares {unchecked((int)structLength)} element bytes; decoder consumed {reader.BaseStream.Position - elementsStart}.");
+            }
             if (numEntries == 0)
             {
                 DummyStruct = new StructPropertyData(name, fullType)
@@ -190,6 +202,7 @@ public class ArrayPropertyData : PropertyData<PropertyData[]>
                 PackedCount = numEntries;
                 PackedElements = reader.ReadBytes(checked(numEntries * size));
                 Value = [];
+                CheckInnerLength();
                 return;
             }
             else
@@ -208,6 +221,7 @@ public class ArrayPropertyData : PropertyData<PropertyData[]>
                 DummyStruct = (StructPropertyData)results[0];
             }
             Value = results;
+            CheckInnerLength();
         }
         else
         {

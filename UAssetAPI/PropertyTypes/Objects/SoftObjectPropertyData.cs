@@ -159,7 +159,7 @@ public struct FSoftObjectPath : IEquatable<FSoftObjectPath>, IStruct<FSoftObject
                 var data = reader.ReadBytes((int)bytes);
                 bool terminated = bytes == 0 || (n < 0 ? data[^1] == 0 && data[^2] == 0 : data[^1] == 0);
                 if (terminated) { reader.BaseStream.Position = start; SubPathString = reader.ReadFString(); }
-                else { SubPathString = new FString(System.Text.Encoding.UTF8.GetString(data), System.Text.Encoding.UTF8); SubPathUnterminatedUtf8 = true; }
+                else { SubPathString = new FString(reader.DecodeString(System.Text.Encoding.UTF8, data), System.Text.Encoding.UTF8); SubPathUnterminatedUtf8 = true; }
             }
         }
     }

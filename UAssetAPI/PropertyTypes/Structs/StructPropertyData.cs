@@ -89,6 +89,22 @@ public class StructPropertyData : PropertyData<List<PropertyData>>
     private static readonly FString CurrentPropertyType = new FString("StructProperty");
     public override FString PropertyType => CurrentPropertyType;
 
+    internal void ReportSchemaSerialization(AssetBinaryReader reader)
+    {
+        // Class.h UScriptStruct::UseNativeSerialization tests STRUCT_SerializeNative (0x800).
+        // The type is encountered even when an unversioned zero marker replaces its body.
+        try
+        {
+            if (StructType?.Value?.Value is { } structType && reader.Asset.Mappings?.GetSchemaFromName(structType, reader.Asset, null, false) is { StructKind: UsmapStructKind.UScriptStruct } schema
+                && (schema.StructOrClassFlags & 0x00000800) != 0)
+                reader.Asset.Coverage.Report("custom-serialization", $"{Name}: the schema for {StructType} carries STRUCT_SerializeNative (0x800).");
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            reader.Asset.Coverage.Report("struct-schema-inspection-failed", $"{Name}: the serialization flags for {StructType} could not be inspected: {ex.GetType().Name}: {ex.Message.Split('\n')[0]}");
+        }
+    }
+
     private void ReadOnce(AssetBinaryReader reader, [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] Type T, long offset, long leng1)
     {
         if (Activator.CreateInstance(T, Name) is not PropertyData data) return;
@@ -153,6 +169,7 @@ public class StructPropertyData : PropertyData<List<PropertyData>>
         RegistryEntry targetEntry = null;
         string structTypeVal = StructType?.Value?.Value;
         if (structTypeVal != null) MainSerializer.PropertyTypeRegistry.TryGetValue(structTypeVal, out targetEntry);
+        ReportSchemaSerialization(reader);
         bool hasCustomStructSerialization = targetEntry != null && targetEntry.HasCustomStructSerialization && serializationContext != PropertySerializationContext.StructFallback;
 
         if (structTypeVal == "FloatRange")
@@ -160,8 +177,7 @@ public class StructPropertyData : PropertyData<List<PropertyData>>
             // FloatRange is a special case; it can either be manually serialized as two floats (TRange<float>) or as a regular struct (FFloatRange), but the first is overridden to use the same name as the second
             // The best solution is to just check and see if the next bit is an FName or not
 
-            int nextFourBytes = reader.ReadInt32();
-            reader.BaseStream.Position -= sizeof(int);
+            int nextFourBytes = reader.PeekInt32();
             hasCustomStructSerialization = !(reader.Asset.HasUnversionedProperties || (nextFourBytes >= 0 && nextFourBytes < reader.Asset.GetNameMapIndexList().Count && reader.Asset.GetNameReference(nextFourBytes).Value.EndsWith("Bound")));
         }
         if (structTypeVal == "RichCurveKey" && reader.Asset.ObjectVersion < ObjectVersion.VER_UE4_SERIALIZE_RICH_CURVE_KEY) hasCustomStructSerialization = false;
@@ -187,6 +203,7 @@ public class StructPropertyData : PropertyData<List<PropertyData>>
 
         if (targetEntry != null && hasCustomStructSerialization)
         {
+            reader.Asset.Coverage.Report("custom-serialization", $"{Name}: encountered the custom binary struct serializer for {StructType}.");
             ReadOnce(reader, targetEntry.PropertyType, reader.BaseStream.Position, leng1);
         }
         else

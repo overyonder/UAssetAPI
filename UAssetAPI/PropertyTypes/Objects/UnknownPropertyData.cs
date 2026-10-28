@@ -32,6 +32,7 @@ public class UnknownPropertyData : PropertyData<byte[]>
         }
 
         Value = reader.ReadBytes((int)leng1);
+        reader.Asset.Coverage.Report("opaque-property-body", $"{Name}: {SerializingPropertyType} retains {Value.Length} body bytes without interpreting them.");
     }
 
     public override int Write(AssetBinaryWriter writer, bool includeHeader, PropertySerializationContext serializationContext = PropertySerializationContext.Normal)

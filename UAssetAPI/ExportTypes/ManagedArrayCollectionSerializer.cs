@@ -48,6 +48,7 @@ internal static class ManagedArrayCollectionSerializer
         {
             var a = new Dictionary<string, object> { ["Name"] = c.Name(), ["Group"] = c.Name() };
             int version = r.ReadInt32(), type = r.ReadInt32();
+            asset.Coverage.Report("discarded-value", $"Managed array attribute {a["Name"]} ({a["Group"]}): serialization version {version} is read but not retained in the decoded attribute.");
             if (type < 0 || type >= TypeNames.Length) throw new FormatException($"Invalid managed array type {type}");
             a["Type"] = TypeNames[type];
             if (version < 4) a["Scope"] = r.ReadInt32();

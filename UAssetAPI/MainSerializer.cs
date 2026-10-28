@@ -322,7 +322,14 @@ namespace UAssetAPI
             long startingOffset = 0;
             if (reader != null) startingOffset = reader.BaseStream.Position;
 
-            if (type.Value.Value == "None") return null;
+            if (type.Value.Value == "None")
+            {
+                if (reader != null) asset.Coverage.Report("skipped-property", $"{name}: the property declares type {type}; the decoder returns without reading its {leng} declared body bytes.");
+                if (type.Number != 0) asset.Coverage.Report("discarded-value", $"{name}: property type terminator {type} is normalized to None.");
+                return null;
+            }
+            if (reader != null && type.Number != 0)
+                asset.Coverage.Report("normalized-type", $"{name}: property type {type} is dispatched as {type.Value.Value}, ignoring its numeric name suffix.");
 
             PropertyData data = null;
             if (PropertyTypeRegistry.ContainsKey(type.Value.Value))
@@ -377,6 +384,10 @@ namespace UAssetAPI
             data.PropertyTypeName = propertyTypeName;
             if (reader != null && !isZero)
             {
+                if (data.HasCustomStructSerialization)
+                    asset.Coverage.Report("custom-serialization", $"{name}: encountered the custom binary serializer for {type} ({data.GetType().Name}).");
+                if (data is UnknownPropertyData)
+                    asset.Coverage.Report("unknown-property", $"{name}: {type} is retained as an undecoded property payload ({leng} declared bytes).");
                 long posBefore = reader.BaseStream.Position;
                 try
                 {
@@ -388,6 +399,7 @@ namespace UAssetAPI
                     // because unversioned headers aren't properly reconstructed currently
                     if (data is StructPropertyData && !reader.Asset.HasUnversionedProperties)
                     {
+                        asset.Coverage.Report("raw-struct", $"{name}: struct decoding failed; its {leng} declared bytes are retained as an opaque payload: {ex.Message.Split('\n')[0]}");
                         reader.BaseStream.Position = posBefore;
                         var root = ex; while (root.InnerException != null) root = root.InnerException;
                         data = new RawStructPropertyData(name) { FailureReason = $"{ex.GetType().Name}: {ex.Message.Split('\n')[0]}" + (root != ex ? $" <- {root.GetType().Name}: {root.Message.Split('\n')[0]}" : "") };
@@ -498,12 +510,20 @@ namespace UAssetAPI
             else if (reader.Asset.ObjectVersionUE5 >= ObjectVersionUE5.PROPERTY_TAG_COMPLETE_TYPE_NAME)
             {
                 name = reader.ReadFName();
-                if (name.Value.Value == "None") return null;
+                if (name.Value.Value == "None")
+                {
+                    if (name.Number != 0) reader.Asset.Coverage.Report("discarded-value", $"Property terminator {name} is normalized to None.");
+                    return null;
+                }
 
                 typeName = new FPropertyTypeName(reader);
                 type = typeName.GetName();
                 leng = reader.ReadInt32();
                 propertyTagFlags = (EPropertyTagFlags)reader.ReadByte();
+                if (propertyTagFlags.HasFlag(EPropertyTagFlags.HasBinaryOrNativeSerialize))
+                    reader.Asset.Coverage.Report("binary-or-native-serialization", $"{name}: its serialized property tag marks {type} as using binary or native serialization.");
+                if (propertyTagFlags.HasFlag(EPropertyTagFlags.SkippedSerialize))
+                    reader.Asset.Coverage.Report("skipped-serialization", $"{name}: its serialized property tag explicitly records SkippedSerialize for {type}.");
 
                 if (propertyTagFlags.HasFlag(EPropertyTagFlags.HasArrayIndex))
                 {
@@ -513,7 +533,11 @@ namespace UAssetAPI
             else
             {
                 name = reader.ReadFName();
-                if (name.Value.Value == "None") return null;
+                if (name.Value.Value == "None")
+                {
+                    if (name.Number != 0) reader.Asset.Coverage.Report("discarded-value", $"Property terminator {name} is normalized to None.");
+                    return null;
+                }
 
                 type = reader.ReadFName();
 
@@ -535,7 +559,11 @@ namespace UAssetAPI
                     " (" + type + ") at offset " + startingOffset,
                     exception);
             }
-            if (structType != null && result is StructPropertyData strucProp) strucProp.StructType = FName.DefineDummy(reader.Asset, structType);
+            if (structType != null && result is StructPropertyData strucProp)
+            {
+                strucProp.StructType = FName.DefineDummy(reader.Asset, structType);
+                if (isZero) strucProp.ReportSchemaSerialization(reader);
+            }
             result.Offset = startingOffset;
             //Debug.WriteLine(type);
             return result;

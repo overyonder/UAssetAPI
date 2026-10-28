@@ -355,6 +355,18 @@ public class FSimpleMemberReferenceData
 
 public static class NativeClassTails
 {
+    /// <summary>Report a known native serializer even when its version branches produce no tail bytes.</summary>
+    internal static void ReportSerializationEncounter(UAsset asset, Export export)
+    {
+        if (export.ObjectFlags.HasFlag(EObjectFlags.RF_ClassDefaultObject)) return;
+        var native = NativeBaseOf(asset, export.ClassIndex);
+        if (native == null || TableKeyOf(asset, native.Value) is not { } key) return;
+        var tails = NativeClassTailTable.Tails[key];
+        NativeClassTailTable.Chains.TryGetValue(key, out var chain);
+        if (tails != NativeClassTail.None || chain?.Length > 0)
+            asset.Coverage.Report("custom-serialization", $"{export.ObjectName}: encountered native class serialization ({Describe(tails, chain)}), including branches with no tail bytes.");
+    }
+
     static readonly Guid FortniteReleaseGuid = UAPUtils.GUID(0xE7086368, 0x6B234C58, 0x84391B70, 0x16265E91);
     static readonly Guid UE5SpecialProjectGuid = UAPUtils.GUID(0x59DA5D52, 0x12324948, 0xB8785978, 0x70B8E98B);
     static readonly Guid RenderingGuid = UAPUtils.GUID(0x12F88B9F, 0x88754AFC, 0xA67CD90C, 0x383ABD29);
@@ -790,6 +802,7 @@ public static class NativeClassTails
             if (stream.Position != stream.Length) { export.NativeTailFailure = $"{stream.Length - stream.Position} bytes after the {Describe(tails, chain)} tails"; return; }
             export.NativeTails = data;
             export.Extras = Array.Empty<byte>();
+            asset.Coverage.Report("custom-serialization", $"{export.ObjectName}: encountered and decoded native class serialization ({Describe(tails, chain)}).");
         }
         catch (Exception ex) when (ex is FormatException or EndOfStreamException or ArgumentException or InvalidOperationException)
         {
@@ -1126,7 +1139,9 @@ public static class NativeClassTails
                 var other = new UAsset(path, EngineVersion.UNKNOWN, asset.Mappings, CustomSerializationFlags.SkipParsingBytecode | CustomSerializationFlags.SkipPreloadDependencyLoading | CustomSerializationFlags.ReadOnlyStreaming);
                 var classExport = other.Exports.OfType<StructExport>().FirstOrDefault(e => e.ObjectName?.ToString() == name);
                 if (classExport != null) result = NativeBaseOf(other, classExport.SuperStruct, depth + 1, resolutionCoverage);
+                else resolutionCoverage.Report("unresolved-parent", $"{key}: the defining package was read, but no decoded class export named {name} was available for native parent resolution.");
             }
+            else resolutionCoverage.Report("unresolved-parent", $"{key}: native parent inspection stopped because its defining package could not be found{(path == null ? " on the configured mounts" : " at " + path)}.");
         }
         catch (Exception ex)
         {

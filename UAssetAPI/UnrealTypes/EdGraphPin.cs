@@ -112,6 +112,8 @@ public class FEdGraphPinType : ICloneable
                 isSet = reader.ReadBooleanInt();
             }
             bool isArray = reader.ReadBooleanInt();
+            if ((isMap && isSet) || (isArray && (isMap || isSet)))
+                reader.Asset.Coverage.Report("normalized-container", $"Legacy pin container flags map={isMap}, set={isSet}, array={isArray} are reduced to a single container type.");
             // FEdGraphPinType::ToPinContainerType
             result.ContainerType = isArray ? EPinContainerType.Array : isSet ? EPinContainerType.Set : isMap ? EPinContainerType.Map : EPinContainerType.None;
         }

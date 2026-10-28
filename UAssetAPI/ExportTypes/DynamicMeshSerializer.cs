@@ -44,6 +44,8 @@ internal static class DynamicMeshSerializer
                 long total = (long)blocks * 512 * width, valid = (long)block * 512 * width + (long)used * width;
                 if (valid > total) throw new FormatException($"Dynamic vector uses {valid} of {total} values");
                 var all = Values(kind, total);
+                if (valid < total)
+                    R.Asset.Coverage.Report("discarded-native-buffer", $"Legacy dynamic mesh vector reads {total} values but retains only {valid}; {total - valid} unused block values are omitted.");
                 return Slice(all, valid);
             }
             uint num = R.ReadUInt32();

@@ -25,6 +25,43 @@ public class UnrealBinaryReader : BinaryReader
     internal int TextHistoryDepth;
     public UnrealBinaryReader(Stream stream) : base(stream) { }
 
+    public override byte[] ReadBytes(int count)
+    {
+        var bytes = base.ReadBytes(count);
+        if (bytes.Length != count) throw new EndOfStreamException($"Requested {count} bytes at {BaseStream.Position - bytes.Length}, but only {bytes.Length} remain.");
+        return bytes;
+    }
+
+    /// <summary>Probe a word without treating it as interpreted source data.</summary>
+    public int PeekInt32(int offset = 0)
+    {
+        long position = BaseStream.Position;
+        var tracked = BaseStream as CoverageReadStream;
+        var checkpoint = tracked?.Checkpoint();
+        try { BaseStream.Position += offset; return ReadInt32(); }
+        finally
+        {
+            BaseStream.Position = position;
+            if (checkpoint.HasValue) tracked.Rollback(checkpoint.Value);
+        }
+    }
+
+    static readonly Encoding StrictUtf8 = new UTF8Encoding(false, true);
+    static readonly Encoding StrictUtf16 = new UnicodeEncoding(false, false, true);
+
+    /// <summary>Decode text while reporting any actual replacement of malformed source bytes.</summary>
+    public string DecodeString(Encoding encoding, ReadOnlySpan<byte> data)
+    {
+        var strict = encoding.CodePage switch { 65001 => StrictUtf8, 1200 => StrictUtf16, _ => encoding };
+        try { return strict.GetString(data); }
+        catch (DecoderFallbackException)
+        {
+            if (this is not AssetBinaryReader { Asset: not null } assetReader) throw;
+            assetReader.Asset.Coverage.Report("text-decoding-loss", $"Malformed {encoding.WebName} in a {data.Length}-byte string at stream position {BaseStream.Position}; decoding substitutes replacement characters.");
+            return encoding.GetString(data);
+        }
+    }
+
     protected byte[] ReverseIfBigEndian(byte[] data)
     {
         if (!BitConverter.IsLittleEndian) Array.Reverse(data);
@@ -104,6 +141,14 @@ public class UnrealBinaryReader : BinaryReader
         return new Guid(ReadBytes(16));
     }
 
+    /// <summary>Read a nonnegative serialized container count.</summary>
+    public int ReadCount()
+    {
+        int count = ReadInt32();
+        if (count < 0) throw new FormatException($"Negative container count {count} at byte {BaseStream.Position - 4}");
+        return count;
+    }
+
     public override string ReadString()
     {
         return ReadFString()?.Value;
@@ -123,12 +168,12 @@ public class UnrealBinaryReader : BinaryReader
                 Span<byte> data = len < 512 ? stackalloc byte[len] : new byte[len];
                 BaseStream.ReadExactly(data);
                 if (data[^2] != 0 || data[^1] != 0) throw new FormatException($"Unterminated UTF-16 FString at byte {BaseStream.Position - len}");
-                return new FString(Encoding.Unicode.GetString(data[..^2]), Encoding.Unicode);
+                return new FString(DecodeString(Encoding.Unicode, data[..^2]), Encoding.Unicode);
             case > 0:
                 data = length < 512 ? stackalloc byte[length] : new byte[length];
                 BaseStream.ReadExactly(data);
                 if (data[^1] != 0) throw new FormatException($"Unterminated FString at byte {BaseStream.Position - length}");
-                return new FString(Encoding.UTF8.GetString(data[..^1]), Encoding.UTF8);
+                return new FString(DecodeString(Encoding.UTF8, data[..^1]), Encoding.UTF8);
             default:
                 return null;
         }
@@ -145,7 +190,7 @@ public class UnrealBinaryReader : BinaryReader
             case > 0:
                 Span<byte> data = length < 512 ? stackalloc byte[length] : new byte[length];
                 BaseStream.ReadExactly(data);
-                return new FString(Encoding.UTF8.GetString(data), Encoding.UTF8);
+                return new FString(DecodeString(Encoding.UTF8, data), Encoding.UTF8);
             default:
                 return null;
         }
@@ -159,15 +204,15 @@ public class UnrealBinaryReader : BinaryReader
         {
             if (abr.Asset is UAsset abrUa && abrUa.WillSerializeNameHashes != false && !string.IsNullOrEmpty(str.Value))
             {
-                hashes = this.ReadUInt32();
+                hashes = unchecked((uint)PeekInt32());
                 if (hashes < (1 << 10) && abrUa.ObjectVersion < ObjectVersion.VER_UE4_NAME_HASHES_SERIALIZED) // "i lied, there's actually no hashes"
                 {
                     abrUa.WillSerializeNameHashes = false;
                     hashes = 0;
-                    this.BaseStream.Position -= sizeof(uint);
                 }
                 else
                 {
+                    hashes = ReadUInt32();
                     abrUa.WillSerializeNameHashes = true;
                 }
             }
@@ -184,7 +229,7 @@ public class UnrealBinaryReader : BinaryReader
             case ECustomVersionSerializationFormat.Enums:
                 throw new NotImplementedException("Custom version serialization format Enums is currently unimplemented");
             case ECustomVersionSerializationFormat.Guids:
-                int numCustomVersions = ReadInt32();
+                int numCustomVersions = ReadCount();
                 for (int i = 0; i < numCustomVersions; i++)
                 {
                     var customVersionID = ReadGuid();
@@ -194,7 +239,7 @@ public class UnrealBinaryReader : BinaryReader
                 }
                 break;
             case ECustomVersionSerializationFormat.Optimized:
-                numCustomVersions = ReadInt32();
+                numCustomVersions = ReadCount();
                 for (int i = 0; i < numCustomVersions; i++)
                 {
                     var customVersionID = ReadGuid();
@@ -267,7 +312,16 @@ public class AssetBinaryReader : UnrealBinaryReader
     {
         int nameMapPointer = this.ReadInt32();
         int number = this.ReadInt32();
-        return new FName(Asset, nameMapPointer, number);
+        if (nameMapPointer < 0 || nameMapPointer >= Asset.GetNameMapIndexList().Count || number < 0)
+            Asset.Coverage.Report("invalid-name", $"FName at byte {BaseStream.Position - 8} has name-map index {nameMapPointer} and number {number}; it does not resolve to a valid package name.");
+        var name = new FName(Asset, nameMapPointer, number);
+        if (number == 0 && name.Value?.Value is { Length: > 0 } text)
+        {
+            FName.FromStringFragments(Asset, text, out _, out int reconstructedNumber);
+            if (reconstructedNumber != 0)
+                Asset.Coverage.Report("ambiguous-name-output", $"Name-map entry {nameMapPointer} ({text}) has number zero, but its JSON string is also the representation of a numbered FName; the output does not retain that distinction.");
+        }
+        return name;
     }
 
     public T[] ReadArray<T>(int length, Func<T> readElement)
@@ -306,6 +360,7 @@ public class AssetBinaryReader : UnrealBinaryReader
         thumb.Width = ReadInt32();
         thumb.Height = ReadInt32();
         var imageBytesCount = ReadInt32();
+        if (imageBytesCount < 0) throw new FormatException($"Invalid thumbnail image byte count {imageBytesCount}");
         thumb.CompressedImageData = imageBytesCount > 0 ? ReadBytes(imageBytesCount) : Array.Empty<byte>();
 
         return thumb;
@@ -316,6 +371,7 @@ public class AssetBinaryReader : UnrealBinaryReader
         var locMetadataObject = new FLocMetadataObject();
 
         var valueCount = ReadInt32();
+        if (valueCount < 0) throw new FormatException($"Invalid localization metadata value count {valueCount}");
         if (valueCount > 0)
             throw new NotImplementedException("TODO: implement ReadLocMetadataObject");
 
@@ -340,7 +396,7 @@ public class AssetBinaryReader : UnrealBinaryReader
             if (newVal == 0) break;
             readData.Add(newVal);
         }
-        return Encoding.UTF8.GetString(readData.ToArray());
+        return DecodeString(Encoding.UTF8, readData.ToArray());
     }
 
     /// <summary>This method is intended only to be used in parsing Kismet bytecode; please do not use it for any other purpose!</summary>
@@ -355,7 +411,7 @@ public class AssetBinaryReader : UnrealBinaryReader
             readData.Add(newVal1);
             readData.Add(newVal2);
         }
-        return Encoding.Unicode.GetString(readData.ToArray());
+        return DecodeString(Encoding.Unicode, readData.ToArray());
     }
 
     /// <summary>This method is intended only to be used in parsing Kismet bytecode; please do not use it for any other purpose!</summary>
@@ -414,7 +470,9 @@ public class AssetBinaryReader : UnrealBinaryReader
         return this.XFERPTR();
     }
 
-    public KismetExpression[] ReadExpressionArray(EExprToken endToken)
+    public KismetExpression[] ReadExpressionArray(EExprToken endToken) => ReadExpressionArray(endToken, null, 1);
+
+    public KismetExpression[] ReadExpressionArray(EExprToken endToken, int? declaredCount, int expressionsPerEntry = 1)
     {
         List<KismetExpression> newData = new List<KismetExpression>();
         KismetExpression currExpression = null;
@@ -423,6 +481,8 @@ public class AssetBinaryReader : UnrealBinaryReader
             if (currExpression != null) newData.Add(currExpression);
             currExpression = ExpressionSerializer.ReadExpression(this);
         }
+        if (declaredCount.HasValue && (declaredCount.Value < 0 || (long)declaredCount.Value * expressionsPerEntry != newData.Count))
+            Asset.Coverage.Report("bytecode-count-mismatch", $"{endToken}: bytecode declares {declaredCount.Value} entries ({expressionsPerEntry} expressions per entry), but contains {newData.Count} expressions; the declared count is not retained in the decoded expression.");
         return newData.ToArray();
     }
 }

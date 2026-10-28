@@ -95,9 +95,9 @@ public class BytePropertyData : PropertyData
             switch (leng1)
             {
                 case 0: // Should be only seen in maps; fallback "make our best guess and pray we're right" behavior
-                    int nameMapPointer = reader.ReadInt32();
-                    int nameMapIndex = reader.ReadInt32();
-                    reader.BaseStream.Position -= sizeof(int) * 2;
+                    reader.Asset.Coverage.Report("heuristic-property-type", $"{Name}: neither a mapping nor a serialized element length establishes whether this byte property contains a byte or an enum FName; the decoder selects its representation using a byte-pattern probe.");
+                    int nameMapPointer = reader.PeekInt32();
+                    int nameMapIndex = reader.PeekInt32(sizeof(int));
 
                     // In the case of it being serialized as just a byte, it will probably try to parse part of the next property and produce something too big for the name map
                     if (nameMapPointer >= 0 && nameMapPointer < reader.Asset.GetNameMapIndexList().Count && nameMapIndex == 0 && !reader.Asset.GetNameReference(nameMapPointer).ToString().Contains("/"))

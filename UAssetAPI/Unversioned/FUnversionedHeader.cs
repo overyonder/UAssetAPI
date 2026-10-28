@@ -84,6 +84,12 @@ namespace UAssetAPI.Unversioned
                 }
                 ZeroMask = new BitArray(intData);
             }
+            for (int i = (int)NumBits; i < ZeroMask.Length; i++)
+                if (ZeroMask[i])
+                {
+                    reader.Asset.Coverage.Report("discarded-padding-bits", $"Unversioned property zero mask has set bits beyond its {NumBits} property bits; those padding bits are not retained in the decoded properties.");
+                    break;
+                }
         }
 
         public byte[] SaveZeroMaskData()

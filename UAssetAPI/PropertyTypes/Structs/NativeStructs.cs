@@ -318,7 +318,11 @@ public class WorldPartitionActorFilterPropertyData : NativeFieldsPropertyData
     protected override void ReadFields(AssetBinaryReader r, List<object> f) => f.Add(ReadFilter(r, 0));
     static object ReadFilter(AssetBinaryReader r, int depth)
     {
-        if (depth > 64) throw new FormatException("World partition actor filter nested too deeply");
+        if (depth > 64)
+        {
+            r.Asset.Coverage.Report("pruned-depth", "World partition actor filter decoding stopped at depth 65 (limit 64).");
+            throw new FormatException("World partition actor filter nested too deeply");
+        }
         var c = new ClassSerializers.Cursor(r);
         int fn = r.Asset.GetCustomVersion(FortniteMainGuid);
         bool asString = fn < 99 || fn >= 102;

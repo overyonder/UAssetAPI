@@ -162,15 +162,15 @@ namespace UAssetAPI.ExportTypes
             }
             else if (reader.Asset.ObjectVersionUE5 > ObjectVersionUE5.DATA_RESOURCES && reader.Asset.ObjectVersionUE5 < ObjectVersionUE5.SCRIPT_SERIALIZATION_OFFSET && !ObjectFlags.HasFlag(EObjectFlags.RF_ClassDefaultObject))
             {
-                int dummy = reader.ReadInt32();
+                int dummy = reader.PeekInt32();
                 if (dummy == 0)
                 {
+                    reader.ReadInt32(); // validated leading zero word
                     HasLeadingFourNullBytes = true;
                 }
                 else
                 {
                     HasLeadingFourNullBytes = false;
-                    reader.BaseStream.Seek(-4, System.IO.SeekOrigin.Current);
                 }
             }
 

@@ -40,7 +40,7 @@ namespace UAssetAPI.Kismet.Bytecode.Expressions
         {
             InnerProperty = reader.XFER_PROP_POINTER();
             int numEntries = reader.ReadInt32(); // Number of elements
-            Elements = reader.ReadExpressionArray(EExprToken.EX_EndSetConst);
+            Elements = reader.ReadExpressionArray(EExprToken.EX_EndSetConst, numEntries);
         }
 
         /// <summary>

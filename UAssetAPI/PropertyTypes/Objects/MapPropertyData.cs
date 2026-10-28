@@ -183,7 +183,10 @@ public class MapPropertyData : PropertyData
         }
 
         int numEntries = reader.ReadInt32();
-        if (numEntries > (reader.BaseStream.Length - reader.BaseStream.Position)) throw new FormatException($"Value length ({numEntries}) exceeds max length ({(reader.BaseStream.Length - reader.BaseStream.Position)})");
+        if (numEntries < 0 || numEntries > (reader.BaseStream.Length - reader.BaseStream.Position)) throw new FormatException($"Invalid map value length ({numEntries}); remaining bytes: {reader.BaseStream.Length - reader.BaseStream.Position}");
+        if (numEntries > 0 && reader.Asset.ObjectVersionUE5 < ObjectVersionUE5.PROPERTY_TAG_COMPLETE_TYPE_NAME
+            && (type1.Number != 0 || type2.Number != 0))
+            reader.Asset.Coverage.Report("discarded-value", $"{Name}: nonempty map type names {type1}/{type2} carry numeric suffixes that are not retained by the element types in decoded output.");
         if (numEntries == 0)
         {
             KeyType = type1;

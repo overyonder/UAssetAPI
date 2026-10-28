@@ -5,7 +5,7 @@ using System.Linq;
 
 namespace UAssetAPI;
 
-/// <summary>A concrete omission encountered while reading a package.</summary>
+/// <summary>A concrete decode condition reported with coverage output.</summary>
 public sealed class DecodeCoverageDiagnostic
 {
     public string Kind;
@@ -13,10 +13,10 @@ public sealed class DecodeCoverageDiagnostic
     public long Count;
 }
 
-/// <summary>Per-package omissions, aggregated by kind and location with no copies of package payloads.</summary>
+/// <summary>Per-package decode conditions, retaining an occurrence count and one concrete example per kind.</summary>
 public sealed class DecodeCoverage
 {
-    readonly Dictionary<(string Kind, string Detail), DecodeCoverageDiagnostic> diagnostics = new();
+    readonly Dictionary<string, DecodeCoverageDiagnostic> diagnostics = new();
     public IEnumerable<DecodeCoverageDiagnostic> Diagnostics => diagnostics.Values;
     internal void Clear() => diagnostics.Clear();
 
@@ -29,9 +29,8 @@ public sealed class DecodeCoverage
 
     void Report(string kind, string detail, long count)
     {
-        var key = (kind, detail);
-        if (diagnostics.TryGetValue(key, out var diagnostic)) diagnostic.Count += count;
-        else diagnostics.Add(key, new DecodeCoverageDiagnostic { Kind = kind, Detail = detail, Count = count });
+        if (diagnostics.TryGetValue(kind, out var diagnostic)) diagnostic.Count += count;
+        else diagnostics.Add(kind, new DecodeCoverageDiagnostic { Kind = kind, Detail = detail, Count = count });
     }
 }
 
@@ -40,6 +39,13 @@ public sealed class DecodeCoverage
 internal sealed class CoverageReadStream(Stream input, DecodeCoverage coverage) : Stream
 {
     readonly List<(long Start, long End)> ranges = new();
+    internal (int Count, (long Start, long End) Last) Checkpoint() => (ranges.Count, ranges.Count == 0 ? default : ranges[^1]);
+
+    internal void Rollback((int Count, (long Start, long End) Last) checkpoint)
+    {
+        if (ranges.Count > checkpoint.Count) ranges.RemoveRange(checkpoint.Count, ranges.Count - checkpoint.Count);
+        if (checkpoint.Count > 0) ranges[^1] = checkpoint.Last;
+    }
     void Record(long start, int count)
     {
         if (count <= 0) return;
@@ -62,7 +68,7 @@ internal sealed class CoverageReadStream(Stream input, DecodeCoverage coverage) 
 
     void ReportHole(long start, long end)
     {
-        // UAsset.WriteData writes a known four-byte package terminator. Validate it, rather than treating it as opaque data.
+        // SavePackage2 writes PACKAGE_FILE_TAG after exports and additional files. Validate an isolated final tag.
         if (end == Length && end - start == 4)
         {
             long previous = input.Position;

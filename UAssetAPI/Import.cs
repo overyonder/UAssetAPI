@@ -56,7 +56,7 @@ namespace UAssetAPI
             if (ShouldSerializePackageName(reader.Asset))
                 PackageName = reader.ReadFName();
 
-            if (reader.Asset.ObjectVersionUE5 >= ObjectVersionUE5.OPTIONAL_RESOURCES) bImportOptional = reader.ReadInt32() == 1;
+            if (reader.Asset.ObjectVersionUE5 >= ObjectVersionUE5.OPTIONAL_RESOURCES) bImportOptional = reader.ReadBooleanInt();
         }
 
         public Import()

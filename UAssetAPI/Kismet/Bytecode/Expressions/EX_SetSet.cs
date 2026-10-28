@@ -40,7 +40,7 @@ namespace UAssetAPI.Kismet.Bytecode.Expressions
         {
             SetProperty = ExpressionSerializer.ReadExpression(reader);
             int numEntries = reader.ReadInt32(); // Number of elements
-            Elements = reader.ReadExpressionArray(EExprToken.EX_EndSet);
+            Elements = reader.ReadExpressionArray(EExprToken.EX_EndSet, numEntries);
         }
 
         /// <summary>

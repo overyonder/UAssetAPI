@@ -81,6 +81,8 @@ internal sealed class ChaosImplicitSerializer
         int concrete = type & 0x1F;
         if ((type & 0x20) != 0) throw new FormatException($"Chaos implicit object weighted lattice {Name(concrete)}");
         var o = new Dictionary<string, object> { ["Type"] = Name(concrete) };
+        if (((type & 0x80) != 0 && !scaled) || (scaled && instanced))
+            r.Asset.Coverage.Report("discarded-value", $"Chaos implicit object type byte 0x{type:X2} has wrapper bits that are not independently retained by its decoded type name.");
         if (scaled || instanced)
         {
             // ImplicitObjectScaled.h: TImplicitObjectInstanced writes its object; TImplicitObjectScaled its object, scale, inverse
