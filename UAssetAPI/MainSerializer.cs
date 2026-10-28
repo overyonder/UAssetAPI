@@ -382,10 +382,10 @@ namespace UAssetAPI
             data.Ancestry.Initialize(ancestry, parentName, parentModulePath);
             data.ArrayIndex = ArrayIndex;
             data.PropertyTypeName = propertyTypeName;
+            if (reader != null && data.HasCustomStructSerialization)
+                asset.Coverage.Report("custom-serialization", $"{name}: encountered the custom binary serializer for {type} ({data.GetType().Name}), including zero-body representations.");
             if (reader != null && !isZero)
             {
-                if (data.HasCustomStructSerialization)
-                    asset.Coverage.Report("custom-serialization", $"{name}: encountered the custom binary serializer for {type} ({data.GetType().Name}).");
                 if (data is UnknownPropertyData)
                     asset.Coverage.Report("unknown-property", $"{name}: {type} is retained as an undecoded property payload ({leng} declared bytes).");
                 long posBefore = reader.BaseStream.Position;
@@ -562,7 +562,12 @@ namespace UAssetAPI
             if (structType != null && result is StructPropertyData strucProp)
             {
                 strucProp.StructType = FName.DefineDummy(reader.Asset, structType);
-                if (isZero) strucProp.ReportSchemaSerialization(reader);
+                if (isZero)
+                {
+                    strucProp.ReportSchemaSerialization(reader);
+                    if (PropertyTypeRegistry.TryGetValue(structType, out var entry) && entry.HasCustomStructSerialization)
+                        reader.Asset.Coverage.Report("custom-serialization", $"{name}: encountered the registered custom struct type {structType} in an unversioned zero-body representation.");
+                }
             }
             result.Offset = startingOffset;
             //Debug.WriteLine(type);

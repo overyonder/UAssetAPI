@@ -145,6 +145,16 @@ namespace UAssetAPI.UnrealTypes
             }
         }
 
+        internal static void ReportOutputCoverage(INameMap asset, string literal, int number)
+        {
+            if (asset is not UAsset package || number != 0 || string.IsNullOrEmpty(literal)) return;
+            if (literal == FString.NullCase)
+                package.Coverage.Report("ambiguous-name-output", $"The literal name {literal} is represented by the string used as the null-name sentinel; that representation does not retain the literal-name distinction.");
+            FromStringFragments(asset, literal, out _, out int reconstructedNumber);
+            if (reconstructedNumber != 0)
+                package.Coverage.Report("ambiguous-name-output", $"The literal name {literal} has number zero, but its JSON string is also the representation of a numbered FName; the output does not retain that distinction.");
+        }
+
         public static bool IsFromStringValid(INameMap asset, string val)
         {
             if (val == null || val == FString.NullCase) return true;
@@ -191,6 +201,7 @@ namespace UAssetAPI.UnrealTypes
         /// <returns>A dummy FName instance that represents the string.</returns>
         public static FName DefineDummy(INameMap asset, FString val, int number = 0)
         {
+            ReportOutputCoverage(asset, val?.Value, number);
             if (asset != null && !asset.CanCreateDummies())
             {
                 return new FName(asset, val, number);
@@ -215,6 +226,7 @@ namespace UAssetAPI.UnrealTypes
         /// <returns>A dummy FName instance that represents the string.</returns>
         public static FName DefineDummy(INameMap asset, string val, int number = 0)
         {
+            ReportOutputCoverage(asset, val, number);
             if (asset != null && !asset.CanCreateDummies())
             {
                 return new FName(asset, val, number);

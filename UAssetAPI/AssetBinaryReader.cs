@@ -315,12 +315,10 @@ public class AssetBinaryReader : UnrealBinaryReader
         if (nameMapPointer < 0 || nameMapPointer >= Asset.GetNameMapIndexList().Count || number < 0)
             Asset.Coverage.Report("invalid-name", $"FName at byte {BaseStream.Position - 8} has name-map index {nameMapPointer} and number {number}; it does not resolve to a valid package name.");
         var name = new FName(Asset, nameMapPointer, number);
-        if (number == 0 && name.Value?.Value is { Length: > 0 } text)
-        {
-            FName.FromStringFragments(Asset, text, out _, out int reconstructedNumber);
-            if (reconstructedNumber != 0)
-                Asset.Coverage.Report("ambiguous-name-output", $"Name-map entry {nameMapPointer} ({text}) has number zero, but its JSON string is also the representation of a numbered FName; the output does not retain that distinction.");
-        }
+        if (nameMapPointer >= 0 && nameMapPointer < Asset.GetNameMapIndexList().Count
+            && Asset.SearchNameReference(name.Value) is var reconstructedIndex && reconstructedIndex != nameMapPointer)
+            Asset.Coverage.Report("ambiguous-name-output", $"FName at byte {BaseStream.Position - 8} references name-map entry {nameMapPointer}, but its JSON name resolves to duplicate entry {reconstructedIndex}; the output does not retain the original index.");
+        FName.ReportOutputCoverage(Asset, name.Value?.Value, number);
         return name;
     }
 

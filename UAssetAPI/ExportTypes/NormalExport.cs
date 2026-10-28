@@ -208,6 +208,7 @@ namespace UAssetAPI.ExportTypes
 
             if (WritesSparseClassData(reader.Asset as UAsset, out bool? serializable))
             {
+                reader.Asset.Coverage.Report("custom-serialization", $"{ObjectName}: encountered UBlueprintGeneratedClass::SerializeDefaultObject sparse-class-data serialization, including a null sparse-data struct.");
                 SparseClassDataStruct = new FPackageIndex(reader);
                 // a class exported after its default object isn't read yet; the data is then present exactly when bytes remain
                 serializable ??= reader.BaseStream.Position < SerialOffset + SerialSize;

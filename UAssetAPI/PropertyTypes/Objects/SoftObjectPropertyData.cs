@@ -129,6 +129,7 @@ public struct FSoftObjectPath : IEquatable<FSoftObjectPath>, IStruct<FSoftObject
             FSoftObjectPath target = reader.Asset.SoftObjectPathList[idx];
             this.AssetPath = target.AssetPath;
             this.SubPathString = target.SubPathString;
+            reader.Asset.Coverage.Report("soft-path-index-omitted", $"Soft object path table index {idx} at byte {reader.BaseStream.Position - 4} is resolved to {target}; the decoded reference does not retain its original table index.");
         }
         else
         {

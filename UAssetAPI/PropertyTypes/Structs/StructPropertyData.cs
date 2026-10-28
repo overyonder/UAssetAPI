@@ -194,6 +194,9 @@ public class StructPropertyData : PropertyData<List<PropertyData>>
             && reader.Asset.GetCustomVersion<FCoreObjectVersion>() < FCoreObjectVersion.MaterialInputNativeSerialize) hasCustomStructSerialization = false;
         if (structTypeVal == "FontData" && reader.Asset.GetCustomVersion<FEditorObjectVersion>() < FEditorObjectVersion.AddedFontFaceAssets) hasCustomStructSerialization = false;
 
+        if (hasCustomStructSerialization)
+            reader.Asset.Coverage.Report("custom-serialization", $"{Name}: encountered the custom binary struct serializer for {StructType}, including zero-body representations.");
+
         if (leng1 == 0)
         {
             SerializeNone = false;
@@ -203,7 +206,6 @@ public class StructPropertyData : PropertyData<List<PropertyData>>
 
         if (targetEntry != null && hasCustomStructSerialization)
         {
-            reader.Asset.Coverage.Report("custom-serialization", $"{Name}: encountered the custom binary struct serializer for {StructType}.");
             ReadOnce(reader, targetEntry.PropertyType, reader.BaseStream.Position, leng1);
         }
         else
