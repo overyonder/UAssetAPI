@@ -100,7 +100,7 @@ public class StructPropertyData : PropertyData<List<PropertyData>>
         {
             if (StructType?.Value?.Value is { } structType)
                 schema = reader.Asset.Mappings?.GetSchemaFromName(structType, reader.Asset, module, false);
-            if (schema is { StructKind: UsmapStructKind.UScriptStruct }
+            if (schema is { StructKind: UsmapStructKind.UScriptStruct, AttributeInspectionFailure: null }
                 && (module == null || string.Equals(module, schema.ModulePath, StringComparison.OrdinalIgnoreCase)))
             {
                 if ((schema.StructOrClassFlags & 0x00000800) != 0)

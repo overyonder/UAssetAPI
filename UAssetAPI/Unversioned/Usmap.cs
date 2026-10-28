@@ -318,6 +318,8 @@ namespace UAssetAPI.Unversioned
         }
         [JsonIgnore]
         public bool FromAsset = false;
+        [JsonIgnore]
+        internal string AttributeInspectionFailure;
 
         [JsonIgnore]
         private string _Name;
@@ -1050,6 +1052,8 @@ namespace UAssetAPI.Unversioned
             }
             if (relevantSchema != null && asset != null)
             {
+                if (relevantSchema.AttributeInspectionFailure != null)
+                    asset.Coverage.Report("uninspected-schema-attributes", $"{relevantSchema.ModulePath}.{relevantSchema.Name}: {relevantSchema.AttributeInspectionFailure}");
                 string shortName = withoutModulePath ?? nm;
                 string requestedModule = modulePath ?? (withoutModulePath == null ? null : nm[..nm.LastIndexOf('.')]);
                 if (requestedModule != null && !string.Equals(requestedModule, relevantSchema.ModulePath, StringComparison.OrdinalIgnoreCase))
@@ -1387,6 +1391,8 @@ namespace UAssetAPI.Unversioned
                         if (reader.BaseStream.Position != endPos) throw new FormatException("Failed to parse extension " + extId + ": ended at " + reader.BaseStream.Position + ", expected " + endPos);
                         break;
                     case "EATR": // Extended Attributes
+                        foreach (var entry in schemaIndexMap)
+                            if (entry != null) entry.AttributeInspectionFailure = "Extended schema-attribute inspection did not finish; base or partially read attributes are being used.";
                         byte eatrVer = reader.ReadByte();
                         if (eatrVer > 0) break;
 
@@ -1396,16 +1402,21 @@ namespace UAssetAPI.Unversioned
                             enumIndexMap[i].EnumFlags = reader.ReadInt32();
                         }
                         int eatrNumSchemas = reader.ReadInt32();
+                        if (eatrNumSchemas < 0 || eatrNumSchemas > schemaIndexMap.Length) throw new FormatException("Invalid EATR schema count");
+                        for (int i = eatrNumSchemas; i < schemaIndexMap.Length; i++)
+                            if (schemaIndexMap[i] != null) schemaIndexMap[i].AttributeInspectionFailure = null;
                         for (int i = 0; i < eatrNumSchemas; i++)
                         {
                             schemaIndexMap[i].StructKind = (UsmapStructKind)reader.ReadByte();
                             schemaIndexMap[i].StructOrClassFlags = reader.ReadInt32();
                             int eatrNumProps = reader.ReadInt32();
+                            if (eatrNumProps < 0) throw new FormatException("Invalid EATR property count");
                             for (int j = 0; j < eatrNumProps; j++)
                             {
                                 var flgs = (EPropertyFlags)reader.ReadUInt64();
                                 if (j < schemaIndexMap[i].Properties.Count) schemaIndexMap[i].Properties[j].PropertyFlags = flgs;
                             }
+                            schemaIndexMap[i].AttributeInspectionFailure = null;
                         }
 
                         if (reader.BaseStream.Position != endPos) throw new FormatException("Failed to parse extension " + extId + ": ended at " + reader.BaseStream.Position + ", expected " + endPos);
