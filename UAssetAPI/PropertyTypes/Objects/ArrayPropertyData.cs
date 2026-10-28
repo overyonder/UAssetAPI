@@ -99,6 +99,12 @@ public class ArrayPropertyData : PropertyData<PropertyData[]>
         }
 
         // an array inside another property, such as an optional's value, has no tag of its own; its type name carries the inner type
+        if (this is not SetPropertyData && !reader.Asset.HasUnversionedProperties && bExperimentalOverridableLogic)
+        {
+            reader.Asset.Coverage.Report("unsupported-container-serialization", $"{Name}: the array tag selects experimental overridable serialization; its container override layout is not decoded.");
+            throw new NotSupportedException("Experimental overridable array serialization is not implemented");
+        }
+
         if (ArrayType == null && PropertyTypeName != null && PropertyTypeName.GetParameter(0) != null) ArrayType = PropertyTypeName.GetParameter(0).GetName();
 
         FName arrayStructType = null;
@@ -256,6 +262,7 @@ public class ArrayPropertyData : PropertyData<PropertyData[]>
             for (int i = 0; i < numEntries; i++)
             {
                 results[i] = MainSerializer.TypeToClass(ArrayType, FName.DefineDummy(reader.Asset, i.ToString(), int.MinValue), Ancestry, Name, null, reader.Asset, propertyTypeName: propTypeName);
+                MainSerializer.ReportCustomSerializationEncounter(reader.Asset, results[i], ArrayType);
                 results[i].Offset = reader.BaseStream.Position;
                 if (results[i] is StructPropertyData data) data.StructType = arrayStructType ?? propTypeName?.GetParameter(0)?.GetName() ?? FName.DefineDummy(reader.Asset, "Generic");
                 results[i].Read(reader, false, averageSizeEstimate, 0, PropertySerializationContext.Array);

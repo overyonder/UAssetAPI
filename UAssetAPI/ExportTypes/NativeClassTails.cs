@@ -650,8 +650,9 @@ public static class NativeClassTails
         return list;
     }
 
-    // Blueprint class package path + class name -> its nearest native class, across all packages read in this process.
-    static readonly ConcurrentDictionary<string, ((string Module, string Class)? Base, DecodeCoverageDiagnostic[] Diagnostics)> BlueprintNativeBase = new();
+    // Defining file version + class name -> its nearest native class. A /Game path
+    // alone is shared by unrelated sample projects and cannot identify this cache entry.
+    static readonly ConcurrentDictionary<(string File, long Length, long WriteTime, string Class), ((string Module, string Class)? Base, DecodeCoverageDiagnostic[] Diagnostics)> BlueprintNativeBase = new();
 
     /// <summary>Reads the tails from an export's leftover bytes, keeping them only if they account for every byte.</summary>
     internal static void TryRead(UAsset asset, Export export)
@@ -1199,18 +1200,21 @@ public static class NativeClassTails
         if (package == null || name == null) return null;
         if (package.StartsWith("/Script/")) return (package, name);
         string key = package + "." + name;
-        if (BlueprintNativeBase.TryGetValue(key, out var cached))
-        {
-            coverage.Include(cached.Diagnostics);
-            return cached.Base;
-        }
         (string, string)? result = null;
+        (string File, long Length, long WriteTime, string Class)? cacheKey = null;
         var resolutionCoverage = new DecodeCoverage();
         try
         {
             string path = asset.FindAssetOnDiskFromPath(package);
             if (path != null && File.Exists(path))
             {
+                var source = new FileInfo(path);
+                cacheKey = (source.FullName, source.Length, source.LastWriteTimeUtc.Ticks, name);
+                if (BlueprintNativeBase.TryGetValue(cacheKey.Value, out var cached))
+                {
+                    coverage.Include(cached.Diagnostics);
+                    return cached.Base;
+                }
                 var other = new UAsset(path, EngineVersion.UNKNOWN, asset.Mappings, CustomSerializationFlags.SkipParsingBytecode | CustomSerializationFlags.SkipPreloadDependencyLoading | CustomSerializationFlags.ReadOnlyStreaming);
                 var classExport = other.Exports.OfType<StructExport>().FirstOrDefault(e => e.ObjectName?.ToString() == name);
                 if (classExport != null) result = NativeBaseOf(other, classExport.SuperStruct, depth + 1, resolutionCoverage);
@@ -1223,7 +1227,7 @@ public static class NativeClassTails
             resolutionCoverage.Report("unresolved-parent", $"{key}: native parent resolution failed: {ex.GetType().Name}: {ex.Message.Split('\n')[0]}");
         }
         var diagnostics = resolutionCoverage.Diagnostics.ToArray();
-        BlueprintNativeBase[key] = (result, diagnostics);
+        if (result.HasValue && cacheKey.HasValue) BlueprintNativeBase[cacheKey.Value] = (result, diagnostics);
         coverage.Include(diagnostics);
         return result;
     }

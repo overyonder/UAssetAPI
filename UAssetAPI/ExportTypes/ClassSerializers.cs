@@ -1592,7 +1592,7 @@ internal static class ClassSerializers
             if (tag == V2Tag)
             {
                 byte k = r.ReadByte();
-                format = k switch { 0 => r.ReadFString()?.Value, 1 => "None", 2 => "Oodle", 3 => "Zlib", 4 => "Gzip", 5 => "LZ4", _ => throw new FormatException($"Invalid compressor {k}") };
+                format = k switch { 0 => r.ReadString(), 1 => "None", 2 => "Oodle", 3 => "Zlib", 4 => "Gzip", 5 => "LZ4", _ => throw new FormatException($"Invalid compressor {k}") };
             }
             else if (tag != Tag) throw new FormatException($"Invalid compressed archive tag {tag:X} at {r.BaseStream.Position - 16}");
             long compressed = r.ReadInt64(), uncompressed = r.ReadInt64();
@@ -1732,7 +1732,7 @@ internal static class ClassSerializers
             return new Dictionary<string, object> { ["Flags"] = flags, ["BulkDataId"] = id, ["PayloadHash"] = Convert.ToHexString(hash),
                 ["PayloadSize"] = size, ["PayloadOffset"] = offset };
         }
-        public string Str() => r.ReadFString()?.Value;
+        public string Str() => r.ReadString();
         public object Name() => r.ReadFName().ToString();
         public bool Bool() { uint v = r.ReadUInt32(); if (v > 1) throw new FormatException($"Invalid bool {v}"); return v == 1; }
         /// <summary>An FTransform by operator&lt;&lt;: rotation, translation and scale, double precision with large world coordinates.</summary>

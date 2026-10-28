@@ -381,8 +381,7 @@ namespace UAssetAPI
             data.Ancestry.Initialize(ancestry, parentName, parentModulePath);
             data.ArrayIndex = ArrayIndex;
             data.PropertyTypeName = propertyTypeName;
-            if (reader != null && data.HasCustomStructSerialization)
-                asset.Coverage.Report("custom-serialization", $"{name}: encountered the custom binary serializer for {type} ({data.GetType().Name}), including zero-body representations.");
+            if (reader != null) ReportCustomSerializationEncounter(asset, data, type);
             if (reader != null && !isZero)
             {
                 if (data is UnknownPropertyData)
@@ -427,6 +426,12 @@ namespace UAssetAPI
             }
 
             return data;
+        }
+
+        internal static void ReportCustomSerializationEncounter(UAsset asset, PropertyData data, FName type)
+        {
+            if (data.HasCustomStructSerialization)
+                asset.Coverage.Report("custom-serialization", $"{data.Name}: encountered the custom binary serializer for {type} ({data.GetType().Name}), including zero-body representations.");
         }
 
         /// <summary>
@@ -482,18 +487,8 @@ namespace UAssetAPI
                     }
                     practicingUnversionedPropertyIndex -= relevantSchema.PropCount;
 
-                    if (relevantSchema.SuperType != null && relevantSchema.SuperTypeModulePath != null && reader.Asset.Mappings.Schemas.ContainsKey(relevantSchema.SuperTypeModulePath + "." + relevantSchema.SuperType))
-                    {
-                        relevantSchema = reader.Asset.Mappings.Schemas[relevantSchema.SuperTypeModulePath + "." + relevantSchema.SuperType];
-                    }
-                    else if (relevantSchema.SuperType != null && reader.Asset.Mappings.Schemas.ContainsKey(relevantSchema.SuperType) && relevantSchema.Name != relevantSchema.SuperType) // name is insufficient if name of super is same as name of child
-                    {
-                        relevantSchema = reader.Asset.Mappings.Schemas[relevantSchema.SuperType];
-                    }
-                    else
-                    {
-                        relevantSchema = null;
-                    }
+                    relevantSchema = reader.Asset.Mappings.GetSchemaFromName(relevantSchema.SuperType,
+                        reader.Asset, relevantSchema.SuperTypeModulePath, false);
 
                     if (relevantSchema == null) throw new FormatException("Failed to find a valid property for schema index " + header.UnversionedPropertyIndex + " in the class " + parentName.ToString());
                 }
@@ -509,6 +504,8 @@ namespace UAssetAPI
                 // check if property is zero
                 if (header.CurrentFragment.Value.bHasAnyZeroes)
                 {
+                    if (header.ZeroMaskIndex >= header.ZeroMask.Count)
+                        reader.Asset.Coverage.Report("missing-zero-mask-bit", $"{parentName}.{name}: unversioned zero-mask index {header.ZeroMaskIndex} is outside its {header.ZeroMask.Count} available bits; the value is read as nonzero.");
                     isZero = header.ZeroMaskIndex >= header.ZeroMask.Count ? false : header.ZeroMask.Get(header.ZeroMaskIndex);
                     header.ZeroMaskIndex++;
                 }

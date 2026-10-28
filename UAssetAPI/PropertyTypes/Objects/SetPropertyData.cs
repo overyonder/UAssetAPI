@@ -46,6 +46,8 @@ public class SetPropertyData : ArrayPropertyData
             this.ReadEndPropertyTag(reader);
         }
 
+        if (PropertyTypeName?.GetParameter(0) is { Nodes.Count: > 0 } innerTypeName) ArrayType ??= innerTypeName.GetName();
+
         if (reader.Asset.Mappings != null && ArrayType == null && reader.Asset.Mappings.TryGetPropertyData(Name, Ancestry, reader.Asset, out UsmapArrayData strucDat1))
         {
             ArrayType = FName.DefineDummy(reader.Asset, strucDat1.InnerType.Type.ToString());

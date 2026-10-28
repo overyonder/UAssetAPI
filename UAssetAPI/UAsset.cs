@@ -739,11 +739,6 @@ namespace UAssetAPI
         }
 
         /// <summary>
-        /// Attempt to find another asset on disk given an asset path (starting with /Game/ or within a plugin).
-        /// </summary>
-        /// <param name="path">The asset path.</param>
-        /// <returns>The path to the file on disk, or null if none could be found.</returns>
-        /// <summary>
         /// Content directories by mount point (Engine, or a plugin's name) for packages outside the asset's own project, such
         /// as engine and engine plugin content. Filled by the caller.
         /// </summary>
@@ -756,6 +751,9 @@ namespace UAssetAPI
         /// </summary>
         public static readonly Dictionary<string, Dictionary<string, string>> ProjectMountPoints = new();
 
+        /// <summary>Find another asset on disk from its /Game or plugin asset path.</summary>
+        /// <param name="path">The asset path.</param>
+        /// <returns>The file path, or null if it cannot be found.</returns>
         public virtual string FindAssetOnDiskFromPath(string path)
         {
             if (!path.StartsWith("/") || path.StartsWith("/Script")) return null;

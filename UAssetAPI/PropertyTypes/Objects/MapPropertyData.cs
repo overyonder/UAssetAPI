@@ -39,6 +39,7 @@ public class MapPropertyData : PropertyData
 
     [JsonProperty]
     public PropertyData[] KeysToRemove = null;
+    [JsonProperty] public bool ReplaceMap;
 
     public MapPropertyData(FName name) : base(name)
     {
@@ -124,7 +125,8 @@ public class MapPropertyData : PropertyData
                 data.Read(reader, false, 1, 0, PropertySerializationContext.Map);
                 return data;
             default:
-                var res = MainSerializer.TypeToClass(type, name, Ancestry, Name, null, reader.Asset, null, leng, propertyTypeName: PropertyTypeName?.GetParameter(0));
+                var res = MainSerializer.TypeToClass(type, name, Ancestry, Name, null, reader.Asset, null, leng, propertyTypeName: PropertyTypeName?.GetParameter(isKey ? 0 : 1));
+                MainSerializer.ReportCustomSerializationEncounter(reader.Asset, res, type);
                 res.Ancestry.Initialize(Ancestry, Name);
                 res.Read(reader, includeHeader, leng, 0, PropertySerializationContext.Map);
                 return res;
@@ -168,6 +170,15 @@ public class MapPropertyData : PropertyData
             this.ReadEndPropertyTag(reader);
         }
 
+        if (PropertyTypeName?.GetParameter(0) is { Nodes.Count: > 0 } keyTypeName) type1 ??= keyTypeName.GetName();
+        if (PropertyTypeName?.GetParameter(1) is { Nodes.Count: > 0 } valueTypeName) type2 ??= valueTypeName.GetName();
+
+        if (!reader.Asset.HasUnversionedProperties && bExperimentalOverridableLogic)
+        {
+            reader.Asset.Coverage.Report("unsupported-container-serialization", $"{Name}: the map tag selects experimental overridable serialization; its replaced/removed/modified/shadowed/added entry layout is not decoded.");
+            throw new NotSupportedException("Experimental overridable map serialization is not implemented");
+        }
+
         if (reader.Asset.Mappings != null && type1 == null && type2 == null && reader.Asset.Mappings.TryGetPropertyData(Name, Ancestry, reader.Asset, out UsmapMapData strucDat1))
         {
             type1 = FName.DefineDummy(reader.Asset, strucDat1.InnerType.Type.ToString());
@@ -175,6 +186,8 @@ public class MapPropertyData : PropertyData
         }
 
         int numKeysToRemove = reader.ReadInt32();
+        ReplaceMap = numKeysToRemove == -1;
+        if (ReplaceMap) numKeysToRemove = 0;
         if (numKeysToRemove > (reader.BaseStream.Length - reader.BaseStream.Position)) throw new FormatException($"KeysToRemove length ({numKeysToRemove}) exceeds max length ({(reader.BaseStream.Length - reader.BaseStream.Position)})");
         KeysToRemove = new PropertyData[numKeysToRemove];
         for (int i = 0; i < numKeysToRemove; i++)
@@ -246,7 +259,7 @@ public class MapPropertyData : PropertyData
         }
 
         int here = (int)writer.BaseStream.Position;
-        writer.Write(KeysToRemove?.Length ?? 0);
+        writer.Write(ReplaceMap ? -1 : KeysToRemove?.Length ?? 0);
         if (KeysToRemove != null)
         {
             for (int i = 0; i < KeysToRemove.Length; i++)

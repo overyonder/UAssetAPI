@@ -1,4 +1,5 @@
 using Newtonsoft.Json;
+using System;
 using System.Collections.Generic;
 
 namespace UAssetAPI.UnrealTypes;
@@ -50,6 +51,12 @@ public class FPropertyTypeName
         {
             var node = new FPropertyTypeNameNode(reader);
             Nodes.Add(node);
+            if (node.InnerCount < 0 || node.InnerCount > int.MaxValue - totalNodes
+                || (long)(totalNodes - i - 1 + (long)node.InnerCount) * 12 > reader.BaseStream.Length - reader.BaseStream.Position)
+            {
+                reader.Asset.Coverage.Report("invalid-type-tree", $"Property type node at byte {reader.BaseStream.Position - 12} declares {node.InnerCount} children; inspection stopped at a negative count, node-count overflow or unavailable child-node bytes.");
+                throw new FormatException("Invalid property type-name child count");
+            }
             totalNodes += node.InnerCount;
         }
     }

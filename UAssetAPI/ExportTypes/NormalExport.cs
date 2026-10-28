@@ -30,6 +30,7 @@ namespace UAssetAPI.ExportTypes
     public class NormalExport : Export
     {
         public List<PropertyData> Data;
+        public FUnversionedHeader UnversionedHeader;
         public Guid? ObjectGuid;
         public EClassSerializationControlExtension SerializationControl;
         public EOverriddenPropertyOperation Operation;
@@ -58,6 +59,7 @@ namespace UAssetAPI.ExportTypes
         /// </summary>
         public FPackageIndex SparseClassDataStruct;
         public List<PropertyData> SparseClassData;
+        public FUnversionedHeader SparseClassDataUnversionedHeader;
 
         /// <summary>
         /// Gets or sets the value associated with the specified key. This operation loops linearly, so it may not be suitable for high-performance environments.
@@ -180,6 +182,7 @@ namespace UAssetAPI.ExportTypes
             if (HasNoTaggedProperties) return;
 
             var unversionedHeader = new FUnversionedHeader(reader);
+            UnversionedHeader = reader.Asset.HasUnversionedProperties ? unversionedHeader : null;
             if (!reader.Asset.HasUnversionedProperties && reader.Asset.ObjectVersionUE5 >= ObjectVersionUE5.PROPERTY_TAG_EXTENSION_AND_OVERRIDABLE_SERIALIZATION)
             {
                 SerializationControl = (EClassSerializationControlExtension)reader.ReadByte();
@@ -218,6 +221,7 @@ namespace UAssetAPI.ExportTypes
                     FName structName = SparseClassDataStruct.IsExport() ? SparseClassDataStruct.ToExport(reader.Asset).ObjectName : SparseClassDataStruct.ToImport(reader.Asset).ObjectName;
                     // a struct's tagged properties carry no serialization control extension (UStruct::SerializeVersionedTaggedProperties)
                     var header = new FUnversionedHeader(reader);
+                    SparseClassDataUnversionedHeader = reader.Asset.HasUnversionedProperties ? header : null;
                     while ((bit = MainSerializer.Read(reader, null, structName, FName.DefineDummy(reader.Asset, "/Script/Engine"), header, true)) != null) SparseClassData.Add(bit);
                 }
             }

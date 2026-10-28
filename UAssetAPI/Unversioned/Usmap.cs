@@ -470,6 +470,14 @@ namespace UAssetAPI.Unversioned
 
         [JsonIgnore]
         internal bool IsPlaceholder = false;
+        [JsonIgnore]
+        internal string ValueInspectionFailure;
+
+        internal void ReportValueInspectionFailure(UAsset asset)
+        {
+            if (ValueInspectionFailure != null)
+                asset.Coverage.Report("uninspected-enum-mapping", $"{Name}: {ValueInspectionFailure}");
+        }
 
         internal void PopulateIfNeeded()
         {
@@ -608,6 +616,30 @@ namespace UAssetAPI.Unversioned
         /// .usmap schema map
         /// </summary>
         public IDictionary<string, UsmapSchema> Schemas;
+        IDictionary<string, UsmapSchema> indexedSchemaBase;
+        int indexedSchemaCount = -1;
+        Dictionary<string, string> schemaAliasModules;
+        HashSet<string> ambiguousSchemaAliases;
+
+        void IndexSchemaAliases()
+        {
+            var source = Schemas is ScopedDictionary<string, UsmapSchema> scoped ? scoped.Base : Schemas;
+            if (ReferenceEquals(source, indexedSchemaBase) && source.Count == indexedSchemaCount) return;
+            var comparer = AreFNamesCaseInsensitive ? StringComparer.InvariantCultureIgnoreCase : StringComparer.InvariantCulture;
+            schemaAliasModules = new Dictionary<string, string>(comparer);
+            ambiguousSchemaAliases = new HashSet<string>(comparer);
+            foreach (string key in source.Keys)
+            {
+                int separator = key.LastIndexOf('.');
+                if (separator <= 0 || !key.StartsWith('/')) continue;
+                string name = key[(separator + 1)..], module = key[..separator];
+                if (schemaAliasModules.TryGetValue(name, out string first) && !comparer.Equals(first, module))
+                    ambiguousSchemaAliases.Add(name);
+                else schemaAliasModules[name] = module;
+            }
+            indexedSchemaBase = source;
+            indexedSchemaCount = source.Count;
+        }
 
         /// <summary>
         /// List of extensions that failed to parse.
@@ -965,7 +997,7 @@ namespace UAssetAPI.Unversioned
                 }
 
                 schemaName = relevantSchema.SuperType;
-                relevantSchema = this.GetSchemaFromName(schemaName, asset);
+                relevantSchema = this.GetSchemaFromName(schemaName, asset, relevantSchema.SuperTypeModulePath);
                 hasDoneFirst = true;
             }
             return string.Join("\n", res.ToArray());
@@ -1016,6 +1048,22 @@ namespace UAssetAPI.Unversioned
                 // note: this is probably not needed anymore since we now collate schemas on asset load
                 relevantSchema = Usmap.GetSchemaFromStructExport(nm, asset);
             }
+            if (relevantSchema != null && asset != null)
+            {
+                string shortName = withoutModulePath ?? nm;
+                string requestedModule = modulePath ?? (withoutModulePath == null ? null : nm[..nm.LastIndexOf('.')]);
+                if (requestedModule != null && !string.Equals(requestedModule, relevantSchema.ModulePath, StringComparison.OrdinalIgnoreCase))
+                    asset.Coverage.Report("schema-module-fallback", $"{requestedModule}.{shortName}: schema lookup used {relevantSchema.ModulePath ?? "<unqualified>"}.{relevantSchema.Name}; the requested qualified schema was not inspected.");
+                else if (requestedModule == null && !relevantSchema.FromAsset)
+                {
+                    IndexSchemaAliases();
+                    if (ambiguousSchemaAliases.Contains(shortName))
+                        asset.Coverage.Report("ambiguous-schema", $"{shortName}: multiple qualified schemas share this alias; unqualified lookup selected {relevantSchema.ModulePath}.{relevantSchema.Name} without resolving its module identity.");
+                    else if (schemaAliasModules.TryGetValue(shortName, out string indexedModule)
+                        && !string.Equals(indexedModule, relevantSchema.ModulePath, StringComparison.OrdinalIgnoreCase))
+                        asset.Coverage.Report("schema-alias-binding-mismatch", $"{shortName}: its qualified mapping key names {indexedModule}, but the selected schema names {relevantSchema.ModulePath ?? "<unqualified>"}.");
+                }
+            }
             if (throwExceptions && relevantSchema == null) throw new FormatException("Failed to find a valid schema for parent name " + nm);
             return relevantSchema;
         }
@@ -1051,7 +1099,7 @@ namespace UAssetAPI.Unversioned
 
                 idx += relevantSchema.PropCount;
                 schemaName = relevantSchema.SuperType;
-                relevantSchema = this.GetSchemaFromName(schemaName, asset);
+                relevantSchema = this.GetSchemaFromName(schemaName, asset, relevantSchema.SuperTypeModulePath);
             }
 
             return false;
@@ -1093,7 +1141,7 @@ namespace UAssetAPI.Unversioned
                 propDat = relevantSchema.GetProperty(propertyName.Value.Value, 0)?.PropertyData as T;
                 if (propDat != null) return true;
                 schemaName = relevantSchema.SuperType;
-                relevantSchema = this.GetSchemaFromName(schemaName, asset, null, false);
+                relevantSchema = this.GetSchemaFromName(schemaName, asset, relevantSchema.SuperTypeModulePath, false);
             }
 
             return false;
@@ -1363,20 +1411,27 @@ namespace UAssetAPI.Unversioned
                         if (reader.BaseStream.Position != endPos) throw new FormatException("Failed to parse extension " + extId + ": ended at " + reader.BaseStream.Position + ", expected " + endPos);
                         break;
                     case "ENVP": // Enum Name Value Pairs
+                        foreach (var entry in enumIndexMap)
+                            entry.ValueInspectionFailure = "Extended enum-value mapping inspection did not finish; base or partially read values are being used.";
                         byte envpVer = reader.ReadByte();
                         if (envpVer > 0) break;
 
                         int envpNumEnums = reader.ReadInt32();
+                        if (envpNumEnums < 0 || envpNumEnums > enumIndexMap.Length) throw new FormatException("Invalid ENVP enum count");
+                        for (int i = envpNumEnums; i < enumIndexMap.Length; i++)
+                            enumIndexMap[i].ValueInspectionFailure = null;
                         for (int i = 0; i < envpNumEnums; i++)
                         {
                             enumIndexMap[i].Values.Clear();
                             int envpNumEnumEntries = reader.ReadInt32(); // not a byte this time!!!
+                            if (envpNumEnumEntries < 0) throw new FormatException("Invalid ENVP entry count");
                             for (int j = 0; j < envpNumEnumEntries; j++)
                             {
                                 string envpEntryVal = reader.ReadName();
                                 long envpEntryKey = reader.ReadInt64();
                                 enumIndexMap[i].Values[envpEntryKey] = envpEntryVal;
                             }
+                            enumIndexMap[i].ValueInspectionFailure = null;
                         }
 
                         if (reader.BaseStream.Position != endPos) throw new FormatException("Failed to parse extension " + extId + ": ended at " + reader.BaseStream.Position + ", expected " + endPos);

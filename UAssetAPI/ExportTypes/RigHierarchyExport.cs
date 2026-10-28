@@ -79,7 +79,7 @@ public class RigHierarchyExport : CustomSerializedExport
             if (v > 1) throw new FormatException($"Invalid bool {v} at {R.BaseStream.Position - 4}");
             return v == 1;
         }
-        public string Str() => R.ReadFString()?.Value;
+        public string Str() => R.ReadString();
         public string Name()
         {
             if (Names == null) return R.ReadFName().ToString();

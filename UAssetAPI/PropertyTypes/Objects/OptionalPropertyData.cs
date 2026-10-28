@@ -41,6 +41,13 @@ public class OptionalPropertyData : PropertyData<PropertyData>
             this.ReadEndPropertyTag(reader);
         }
 
+        if (PropertyTypeName?.GetParameter(0) is { Nodes.Count: > 0 } innerTypeName)
+        {
+            InnerType ??= innerTypeName.GetName();
+            if (InnerType.Value.Value == "StructProperty" && innerTypeName.GetParameter(0) is { Nodes.Count: > 0 } structTypeName)
+                InnerStructType ??= structTypeName.GetName();
+        }
+
         if (reader.Asset.Mappings != null && InnerType == null && reader.Asset.Mappings.TryGetPropertyData(Name, Ancestry, reader.Asset, out UsmapArrayData optDat))
         {
             InnerType = FName.DefineDummy(reader.Asset, optDat.InnerType.Type.ToString());
@@ -64,6 +71,7 @@ public class OptionalPropertyData : PropertyData<PropertyData>
 
         var propTypeName = PropertyTypeName?.GetParameter(0);
         Value = MainSerializer.TypeToClass(InnerType, FName.DefineDummy(reader.Asset, "0", int.MinValue), Ancestry, Name, null, reader.Asset, propertyTypeName: propTypeName);
+        MainSerializer.ReportCustomSerializationEncounter(reader.Asset, Value, InnerType);
         Value.Offset = reader.BaseStream.Position;
         if (Value is StructPropertyData data) data.StructType = InnerStructType ?? FName.DefineDummy(reader.Asset, "Generic");
         Value.Read(reader, false, sizeEstimate, 0, PropertySerializationContext.Array);

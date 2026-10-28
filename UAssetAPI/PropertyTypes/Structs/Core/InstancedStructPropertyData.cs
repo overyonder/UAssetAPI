@@ -44,6 +44,7 @@ public class InstancedStructPropertyData : PropertyData<StructPropertyData>
 
         PropertyData bit;
         var unversionedHeader = new FUnversionedHeader(reader);
+        Value.UnversionedHeader = reader.Asset.HasUnversionedProperties ? unversionedHeader : null;
         FName parentName = Export.GetClassTypeForAncestry(Struct, reader.Asset, out FName parentModulePath);
         while ((bit = MainSerializer.Read(reader, null, parentName, parentModulePath, unversionedHeader, true)) != null)
         {

@@ -1,3 +1,4 @@
+using Newtonsoft.Json;
 using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -10,14 +11,16 @@ namespace UAssetAPI.Unversioned
     /// List of serialized property indices and which of them are non-zero.
     /// Serialized as a stream of 16-bit skip-x keep-y fragments and a zero bitmask.
     /// </summary>
+    [JsonObject(MemberSerialization.OptIn)]
     public class FUnversionedHeader
     {
+        [JsonProperty]
         public LinkedList<FFragment> Fragments;
         public LinkedListNode<FFragment> CurrentFragment;
         public int UnversionedPropertyIndex = 0;
         public int ZeroMaskIndex = 0;
-        public uint ZeroMaskNum = 0;
-        public BitArray ZeroMask;
+        [JsonProperty] public uint ZeroMaskNum = 0;
+        [JsonProperty] public BitArray ZeroMask;
         public bool bHasNonZeroValues = false;
 
         public void Read(AssetBinaryReader reader)
@@ -84,12 +87,6 @@ namespace UAssetAPI.Unversioned
                 }
                 ZeroMask = new BitArray(intData);
             }
-            for (int i = (int)NumBits; i < ZeroMask.Length; i++)
-                if (ZeroMask[i])
-                {
-                    reader.Asset.Coverage.Report("discarded-padding-bits", $"Unversioned property zero mask has set bits beyond its {NumBits} property bits; those padding bits are not retained in the decoded properties.");
-                    break;
-                }
         }
 
         public byte[] SaveZeroMaskData()

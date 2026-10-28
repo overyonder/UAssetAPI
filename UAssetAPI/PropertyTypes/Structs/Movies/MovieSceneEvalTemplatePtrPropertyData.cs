@@ -25,9 +25,10 @@ public class MovieSceneTemplatePropertyData : StructPropertyData
         type.Ancestry.Initialize(Ancestry, Name);
         type.Read(reader, includeHeader, leng1);
 
-        if (type.Value != null)
+        Value = [];
+        if (!string.IsNullOrEmpty(type.Value?.Value))
         {
-            StructType = FName.DefineDummy(reader.Asset, type.Value.ToString().Split(".")[1]);
+            StructType = FName.DefineDummy(reader.Asset, type.Value.Value);
             base.Read(reader, false, 1, 0, PropertySerializationContext.StructFallback);
         }
 

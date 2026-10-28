@@ -151,7 +151,11 @@ public class UnrealBinaryReader : BinaryReader
 
     public override string ReadString()
     {
-        return ReadFString()?.Value;
+        FString value = ReadFString();
+        if (this is AssetBinaryReader assetReader && value?.Value != null
+            && value.Encoding.CodePage != new FString(value.Value).Encoding.CodePage)
+            assetReader.Asset?.Coverage.Report("discarded-string-encoding", $"FString ending at byte {BaseStream.Position} uses {value.Encoding.WebName}; its plain string representation omits this source encoding.");
+        return value?.Value;
     }
 
     public virtual FString ReadFString()

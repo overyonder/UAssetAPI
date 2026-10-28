@@ -23,14 +23,7 @@ public class Int16PropertyData : PropertyData<short>
             this.ReadEndPropertyTag(reader);
         }
 
-        if (reader.Asset.HasUnversionedProperties && !serializationContext.IsNormal())
-        {
-            long stored = reader.ReadInt64();
-            Value = (short)stored;
-            if (stored != Value)
-                reader.Asset.Coverage.Report("integer-narrowing", $"{Name}: Int16 value {stored} was narrowed to {Value}, discarding high bits.");
-        }
-        else Value = reader.ReadInt16();
+        Value = reader.ReadInt16();
     }
 
     public override int Write(AssetBinaryWriter writer, bool includeHeader, PropertySerializationContext serializationContext = PropertySerializationContext.Normal)
@@ -38,12 +31,6 @@ public class Int16PropertyData : PropertyData<short>
         if (includeHeader)
         {
             this.WriteEndPropertyTag(writer);
-        }
-
-        if (writer.Asset.HasUnversionedProperties && !serializationContext.IsNormal())
-        {
-            writer.Write((long)Value);
-            return sizeof(long);
         }
 
         writer.Write(Value);

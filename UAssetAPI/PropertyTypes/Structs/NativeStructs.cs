@@ -151,7 +151,7 @@ public class RigVMMemoryStorageStructPropertyData : NativeFieldsPropertyData
         f.Add(r.ReadByte());
         int n = r.ReadInt32();
         if (n < 0 || (long)n * 12 > r.BaseStream.Length - r.BaseStream.Position) throw new FormatException($"Invalid property path count {n}");
-        for (int i = 0; i < n; i++) f.Add(new object[] { r.ReadInt32(), r.ReadFString()?.Value, r.ReadFString()?.Value });
+        for (int i = 0; i < n; i++) f.Add(new object[] { r.ReadInt32(), r.ReadString(), r.ReadString() });
     }
 }
 
@@ -247,7 +247,7 @@ public class RemoteControlProtocolBindingPropertyData : NativeFieldsPropertyData
     protected override void ReadFields(AssetBinaryReader r, List<object> f)
     {
         f.Add(Tagged(r, "RemoteControlProtocolBinding"));
-        string path = r.ReadFString()?.Value;
+        string path = r.ReadString();
         f.Add(path);
         if (!string.IsNullOrEmpty(path)) f.Add(Tagged(r, StructName(path)));
     }

@@ -11,6 +11,7 @@ namespace UAssetAPI.ExportTypes;
 public class UserDefinedStructExport : ScriptStructExport
 {
     public List<PropertyData> StructData = [];
+    public FUnversionedHeader StructDataUnversionedHeader;
     public EClassSerializationControlExtension SerializationControl2;
     public EOverriddenPropertyOperation Operation2;
 
@@ -38,6 +39,7 @@ public class UserDefinedStructExport : ScriptStructExport
 
         PropertyData bit;
         var unversionedHeader = new FUnversionedHeader(reader);
+        StructDataUnversionedHeader = reader.Asset.HasUnversionedProperties ? unversionedHeader : null;
         while ((bit = MainSerializer.Read(reader, null, this.ObjectName, FName.DefineDummy(reader.Asset, reader.Asset.InternalAssetPath), unversionedHeader, true)) != null)
         {
             StructData.Add(bit);

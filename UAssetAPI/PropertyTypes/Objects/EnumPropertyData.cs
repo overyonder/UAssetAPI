@@ -24,7 +24,7 @@ public class EnumPropertyData : PropertyData<FName>
 
     public EnumPropertyData() { }
 
-    private static readonly List<string> ValidEnumInnerTypeList = ["ByteProperty", "UInt16Property", "UInt32Property", "Int8Property", "Int16Property", "IntProperty", "Int64Property"];
+    private static readonly List<string> ValidEnumInnerTypeList = ["ByteProperty", "UInt16Property", "UInt32Property", "UInt64Property", "Int8Property", "Int16Property", "IntProperty", "Int64Property"];
 
     private static readonly FString CurrentPropertyType = new FString("EnumProperty");
     public override FString PropertyType { get { return CurrentPropertyType; } }
@@ -48,7 +48,7 @@ public class EnumPropertyData : PropertyData<FName>
         if (reader.Asset.HasUnversionedProperties && serializationContext.IsNormal())
         {
             Value = null;
-            if (InnerType?.Value.Value == "ByteProperty" || InnerType?.Value.Value == "UInt16Property" || InnerType?.Value.Value == "UInt32Property")
+            if (InnerType?.Value.Value is "ByteProperty" or "UInt16Property" or "UInt32Property" or "UInt64Property")
             {
                 long enumIndice = 0;
 
@@ -63,10 +63,15 @@ public class EnumPropertyData : PropertyData<FName>
                     case "UInt32Property":
                         enumIndice = reader.ReadUInt32();
                         break;
+                    case "UInt64Property":
+                        enumIndice = unchecked((long)reader.ReadUInt64());
+                        break;
                 }
 
-                var listOfValues = reader.Asset.Mappings.EnumMap[EnumType.Value.Value].Values;
-                if (listOfValues.ContainsKey(enumIndice))
+                var enumMapping = reader.Asset.Mappings.EnumMap[EnumType.Value.Value];
+                enumMapping.ReportValueInspectionFailure(reader.Asset);
+                var listOfValues = enumMapping.Values;
+                if (listOfValues.TryGetValue(enumIndice, out string mappedName) && !string.IsNullOrEmpty(mappedName))
                 {
                     Value = FName.DefineDummy(reader.Asset, listOfValues[enumIndice]);
                     ReportAmbiguousValue(reader, listOfValues, enumIndice);
@@ -75,11 +80,10 @@ public class EnumPropertyData : PropertyData<FName>
                 {
                     // fallback
                     Value = FName.DefineDummy(reader.Asset, InvalidEnumIndexFallbackPrefix + enumIndice.ToString());
-                    reader.Asset.Coverage.Report("unresolved-enum", $"{Name}: enum {EnumType} has no mapped member for {enumIndice}; a numeric fallback label is emitted.");
+                    reader.Asset.Coverage.Report("unresolved-enum", $"{Name}: enum {EnumType} has no nonempty mapped member for {enumIndice}; a numeric fallback label is emitted.");
                 }
                 return;
             }
-
             if (InnerType?.Value.Value == "Int8Property" || InnerType?.Value.Value == "Int16Property" ||
                 InnerType?.Value.Value == "IntProperty" || InnerType?.Value.Value == "Int64Property")
             {
@@ -101,8 +105,10 @@ public class EnumPropertyData : PropertyData<FName>
                         break;
                 }
 
-                var listOfValues = reader.Asset.Mappings.EnumMap[EnumType.Value.Value].Values;
-                if (listOfValues.ContainsKey(enumIndice))
+                var enumMapping = reader.Asset.Mappings.EnumMap[EnumType.Value.Value];
+                enumMapping.ReportValueInspectionFailure(reader.Asset);
+                var listOfValues = enumMapping.Values;
+                if (listOfValues.TryGetValue(enumIndice, out string mappedName) && !string.IsNullOrEmpty(mappedName))
                 {
                     Value = FName.DefineDummy(reader.Asset, listOfValues[enumIndice]);
                     ReportAmbiguousValue(reader, listOfValues, enumIndice);
@@ -111,10 +117,11 @@ public class EnumPropertyData : PropertyData<FName>
                 {
                     // fallback
                     Value = FName.DefineDummy(reader.Asset, InvalidEnumIndexFallbackPrefix + enumIndice.ToString());
-                    reader.Asset.Coverage.Report("unresolved-enum", $"{Name}: enum {EnumType} has no mapped member for {enumIndice}; a numeric fallback label is emitted.");
+                    reader.Asset.Coverage.Report("unresolved-enum", $"{Name}: enum {EnumType} has no nonempty mapped member for {enumIndice}; a numeric fallback label is emitted.");
                 }
                 return;
             }
+            reader.Asset.Coverage.Report("unsupported-enum-underlying-type", $"{Name}: no unversioned numeric enum reader handles mapped underlying type {InnerType}; the fallback FName representation is read instead.");
         }
 
         if (includeHeader && !reader.Asset.HasUnversionedProperties)
@@ -155,7 +162,7 @@ public class EnumPropertyData : PropertyData<FName>
             {
                 long enumIndice = 0;
                 var listOfEnums = writer.Asset.Mappings.EnumMap[EnumType.Value.Value].Values;
-                var validIndices = listOfEnums.Where(pair => pair.Value == Value.Value.Value).Select(pair => pair.Key);
+                var validIndices = listOfEnums.Where(pair => pair.Value == Value?.Value?.Value).Select(pair => pair.Key);
                 if (Value == null)
                 {
                     enumIndice = -1;
@@ -189,6 +196,9 @@ public class EnumPropertyData : PropertyData<FName>
                     case "UInt32Property":
                         writer.Write((uint)enumIndice);
                         return sizeof(uint);
+                    case "UInt64Property":
+                        writer.Write(unchecked((ulong)enumIndice));
+                        return sizeof(ulong);
                     case "Int8Property":
                         writer.Write((sbyte)enumIndice);
                         return sizeof(sbyte);
@@ -230,8 +240,10 @@ public class EnumPropertyData : PropertyData<FName>
         if (ValidEnumInnerTypeList.Contains(InnerType?.Value?.Value))
         {
             long enumIndice = 0;
-            var listOfValues = reader.Asset.Mappings.EnumMap[EnumType.Value.Value].Values;
-            if (listOfValues.ContainsKey(enumIndice))
+            var enumMapping = reader.Asset.Mappings.EnumMap[EnumType.Value.Value];
+            enumMapping.ReportValueInspectionFailure(reader.Asset);
+            var listOfValues = enumMapping.Values;
+            if (listOfValues.TryGetValue(enumIndice, out string mappedName) && !string.IsNullOrEmpty(mappedName))
             {
                 Value = FName.DefineDummy(reader.Asset, listOfValues[enumIndice]);
             }
@@ -239,9 +251,10 @@ public class EnumPropertyData : PropertyData<FName>
             {
                 // fallback
                 Value = FName.DefineDummy(reader.Asset, InvalidEnumIndexFallbackPrefix + enumIndice.ToString());
-                reader.Asset.Coverage.Report("unresolved-enum", $"{Name}: enum {EnumType} has no mapped member for its zero value; a numeric fallback label is emitted.");
+                reader.Asset.Coverage.Report("unresolved-enum", $"{Name}: enum {EnumType} has no nonempty mapped member for its zero value; a numeric fallback label is emitted.");
             }
         }
+        else reader.Asset.Coverage.Report("unsupported-enum-underlying-type", $"{Name}: the zero value for mapped enum underlying type {InnerType} is not initialized by a supported numeric enum reader.");
     }
 
     public override string ToString()

@@ -12,6 +12,7 @@ namespace UAssetAPI.PropertyTypes.Structs;
 
 public class StructPropertyData : PropertyData<List<PropertyData>>
 {
+    [JsonProperty] public FUnversionedHeader UnversionedHeader;
     [JsonProperty]
     public FName StructType = null;
     [JsonProperty]
@@ -91,18 +92,27 @@ public class StructPropertyData : PropertyData<List<PropertyData>>
 
     internal void ReportSchemaSerialization(AssetBinaryReader reader)
     {
+        UsmapSchema schema = null;
+        string module = NativeStructSerialization.ResolveModule(reader.Asset, StructType, PropertyTypeName);
         // Class.h UScriptStruct::UseNativeSerialization tests STRUCT_SerializeNative (0x800).
         // The type is encountered even when an unversioned zero marker replaces its body.
         try
         {
-            if (StructType?.Value?.Value is { } structType && reader.Asset.Mappings?.GetSchemaFromName(structType, reader.Asset, null, false) is { StructKind: UsmapStructKind.UScriptStruct } schema
-                && (schema.StructOrClassFlags & 0x00000800) != 0)
-                reader.Asset.Coverage.Report("custom-serialization", $"{Name}: the schema for {StructType} carries STRUCT_SerializeNative (0x800).");
+            if (StructType?.Value?.Value is { } structType)
+                schema = reader.Asset.Mappings?.GetSchemaFromName(structType, reader.Asset, module, false);
+            if (schema is { StructKind: UsmapStructKind.UScriptStruct }
+                && (module == null || string.Equals(module, schema.ModulePath, StringComparison.OrdinalIgnoreCase)))
+            {
+                if ((schema.StructOrClassFlags & 0x00000800) != 0)
+                    reader.Asset.Coverage.Report("custom-serialization", $"{Name}: the schema for {StructType} carries STRUCT_SerializeNative (0x800).");
+                return;
+            }
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             reader.Asset.Coverage.Report("struct-schema-inspection-failed", $"{Name}: the serialization flags for {StructType} could not be inspected: {ex.GetType().Name}: {ex.Message.Split('\n')[0]}");
         }
+        NativeStructSerialization.ReportEncounter(reader.Asset, Name, StructType, PropertyTypeName, schema);
     }
 
     private void ReadOnce(AssetBinaryReader reader, [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] Type T, long offset, long leng1)
@@ -122,6 +132,7 @@ public class StructPropertyData : PropertyData<List<PropertyData>>
         PropertyData data = null;
 
         var unversionedHeader = new FUnversionedHeader(reader);
+        UnversionedHeader = reader.Asset.HasUnversionedProperties ? unversionedHeader : null;
         while (true)
         {
             try { data = MainSerializer.Read(reader, Ancestry, StructType, FName.DefineDummy(reader.Asset, reader.Asset.InternalAssetPath + ((Ancestry?.Ancestors?.Count ?? 0) == 0 ? string.Empty : ("." + Ancestry.Parent))), unversionedHeader, true); }

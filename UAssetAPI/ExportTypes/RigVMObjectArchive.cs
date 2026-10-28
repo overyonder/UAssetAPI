@@ -46,7 +46,7 @@ public sealed class RigVMObjectArchiveReader : AssetBinaryReader
 
     FName NameAt(long offset)
     {
-        string s = ReadFString()?.Value;
+        string s = ReadString();
         return names[offset] = FName.DefineDummy(Asset, string.IsNullOrEmpty(s) ? "None" : s);
     }
 
@@ -81,12 +81,13 @@ public sealed class RigVMObjectArchiveReader : AssetBinaryReader
         if (cls.EndsWith(".RigVMLink"))
         {
             // RigVMLink.cpp: a link writes its two pin paths and nothing of its parent's
-            o["SourcePinPath"] = ReadFString()?.Value;
-            o["TargetPinPath"] = ReadFString()?.Value;
+            o["SourcePinPath"] = ReadString();
+            o["TargetPinPath"] = ReadString();
             return index;
         }
         // Obj.cpp UObject::Serialize: the tagged properties, then whether an object GUID follows unless the object is a template
         var header = new FUnversionedHeader(this);
+        if (Asset.HasUnversionedProperties) o["UnversionedHeader"] = header;
         if (!Asset.HasUnversionedProperties && Asset.ObjectVersionUE5 >= ObjectVersionUE5.PROPERTY_TAG_EXTENSION_AND_OVERRIDABLE_SERIALIZATION)
         {
             var control = (EClassSerializationControlExtension)ReadByte();

@@ -49,6 +49,7 @@ public class InstancedStructContainerPropertyData : PropertyData<List<InstancedS
             if (item.Struct.IsNull()) { item.SkippedBytes = reader.ReadBytes(size); continue; }
             item.Value = new StructPropertyData(FName.DefineDummy(reader.Asset, "InstancedStructContainer"));
             var unversionedHeader = new FUnversionedHeader(reader);
+            item.Value.UnversionedHeader = reader.Asset.HasUnversionedProperties ? unversionedHeader : null;
             FName parentName = Export.GetClassTypeForAncestry(item.Struct, reader.Asset, out FName parentModulePath);
             PropertyData bit;
             while ((bit = MainSerializer.Read(reader, null, parentName, parentModulePath, unversionedHeader, true)) != null) item.Value.Value.Add(bit);

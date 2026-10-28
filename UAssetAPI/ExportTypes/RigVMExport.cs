@@ -180,7 +180,7 @@ public class RigVMData
         public List<T> Array<T>(Func<T> read, int minBytes) { int n = Count(minBytes); var l = new List<T>(n); for (int i = 0; i < n; i++) l.Add(read()); return l; }
         /// <summary>A TMap: its pairs in serialized order.</summary>
         public List<object[]> Map(Func<object> key, Func<object> value, int minBytes) => Array(() => new[] { key(), value() }, minBytes);
-        public string Str() => r.ReadFString()?.Value;
+        public string Str() => r.ReadString();
         public string Name() => r.ReadFName().ToString();
         // FRigVMOperand: memory type, register index, register offset
         public object Operand() => new object[] { r.ReadByte(), r.ReadUInt16(), r.ReadUInt16() };
