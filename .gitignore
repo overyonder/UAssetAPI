@@ -13,3 +13,5 @@ UAssetAPI.Tests/obj
 UAssetAPI.Native/bin
 UAssetAPI.Native/obj
 UAssetAPI.Native/publish
+tools/NativeSerializationCatalog/bin
+tools/NativeSerializationCatalog/obj

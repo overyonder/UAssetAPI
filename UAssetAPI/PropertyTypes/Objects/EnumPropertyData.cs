@@ -56,20 +56,17 @@ public class EnumPropertyData : PropertyData<FName>
                 {
                     case "ByteProperty":
                         enumIndice = reader.ReadByte();
-                        if (enumIndice == byte.MaxValue) return;
                         break;
                     case "UInt16Property":
                         enumIndice = reader.ReadUInt16();
-                        if (enumIndice == ushort.MaxValue) return;
                         break;
                     case "UInt32Property":
                         enumIndice = reader.ReadUInt32();
-                        if (enumIndice == uint.MaxValue) return;
                         break;
                 }
 
                 var listOfValues = reader.Asset.Mappings.EnumMap[EnumType.Value.Value].Values;
-                if (enumIndice < listOfValues.Count)
+                if (listOfValues.ContainsKey(enumIndice))
                 {
                     Value = FName.DefineDummy(reader.Asset, listOfValues[enumIndice]);
                     ReportAmbiguousValue(reader, listOfValues, enumIndice);
@@ -105,7 +102,7 @@ public class EnumPropertyData : PropertyData<FName>
                 }
 
                 var listOfValues = reader.Asset.Mappings.EnumMap[EnumType.Value.Value].Values;
-                if (enumIndice < listOfValues.Count)
+                if (listOfValues.ContainsKey(enumIndice))
                 {
                     Value = FName.DefineDummy(reader.Asset, listOfValues[enumIndice]);
                     ReportAmbiguousValue(reader, listOfValues, enumIndice);
@@ -234,11 +231,7 @@ public class EnumPropertyData : PropertyData<FName>
         {
             long enumIndice = 0;
             var listOfValues = reader.Asset.Mappings.EnumMap[EnumType.Value.Value].Values;
-            if (enumIndice == byte.MaxValue)
-            {
-                Value = null;
-            }
-            else if (enumIndice < listOfValues.Count)
+            if (listOfValues.ContainsKey(enumIndice))
             {
                 Value = FName.DefineDummy(reader.Asset, listOfValues[enumIndice]);
             }

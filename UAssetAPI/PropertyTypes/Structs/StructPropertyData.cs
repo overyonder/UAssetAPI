@@ -168,6 +168,7 @@ public class StructPropertyData : PropertyData<List<PropertyData>>
 
         RegistryEntry targetEntry = null;
         string structTypeVal = StructType?.Value?.Value;
+        FName.ReportTypeNormalization(reader.Asset, StructType, $"{Name}: struct type");
         if (structTypeVal != null) MainSerializer.PropertyTypeRegistry.TryGetValue(structTypeVal, out targetEntry);
         ReportSchemaSerialization(reader);
         bool hasCustomStructSerialization = targetEntry != null && targetEntry.HasCustomStructSerialization && serializationContext != PropertySerializationContext.StructFallback;

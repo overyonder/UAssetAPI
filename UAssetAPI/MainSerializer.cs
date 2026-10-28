@@ -328,8 +328,7 @@ namespace UAssetAPI
                 if (type.Number != 0) asset.Coverage.Report("discarded-value", $"{name}: property type terminator {type} is normalized to None.");
                 return null;
             }
-            if (reader != null && type.Number != 0)
-                asset.Coverage.Report("normalized-type", $"{name}: property type {type} is dispatched as {type.Value.Value}, ignoring its numeric name suffix.");
+            FName.ReportTypeNormalization(asset, type, $"{name}: property type");
 
             PropertyData data = null;
             if (PropertyTypeRegistry.ContainsKey(type.Value.Value))
@@ -472,8 +471,15 @@ namespace UAssetAPI
                 }
 
                 int practicingUnversionedPropertyIndex = header.UnversionedPropertyIndex;
+                HashSet<UsmapSchema> parentSchemas = null;
                 while (practicingUnversionedPropertyIndex >= relevantSchema.PropCount) // if needed, go to parent struct
                 {
+                    parentSchemas ??= new();
+                    if (!parentSchemas.Add(relevantSchema))
+                    {
+                        reader.Asset.Coverage.Report("schema-cycle", $"{parentName}: unversioned property lookup stopped at a repeated schema while resolving index {header.UnversionedPropertyIndex}.");
+                        throw new FormatException("Schema super chain loops at " + relevantSchema.Name);
+                    }
                     practicingUnversionedPropertyIndex -= relevantSchema.PropCount;
 
                     if (relevantSchema.SuperType != null && relevantSchema.SuperTypeModulePath != null && reader.Asset.Mappings.Schemas.ContainsKey(relevantSchema.SuperTypeModulePath + "." + relevantSchema.SuperType))
@@ -576,6 +582,15 @@ namespace UAssetAPI
 
         internal static readonly Regex allNonLetters = new Regex("[^a-zA-Z]", RegexOptions.Compiled);
 
+        // UnrealType.h numeric/name fields, TextProperty.h and StrProperty.h.inl
+        // inherit FProperty::Serialize without adding field-descriptor bytes.
+        static bool UsesGenericFieldLayout(string type, bool legacy = false) => type is
+            "Int8Property" or "Int16Property" or "IntProperty" or "Int64Property"
+            or "UInt16Property" or "UInt32Property" or "UInt64Property"
+            or "FloatProperty" or "DoubleProperty" or "NumericProperty"
+            or "NameProperty" or "StrProperty" or "TextProperty"
+            || (!legacy && type is "AnsiStrProperty" or "Utf8StrProperty");
+
         /// <summary>
         /// Reads an FProperty into memory. Primarily used as a part of <see cref="StructExport"/> serialization.
         /// </summary>
@@ -587,8 +602,13 @@ namespace UAssetAPI
         public static FProperty ReadFProperty(AssetBinaryReader reader)
         {
             FName serializedType = reader.ReadFName();
-            Type requestedType = Type.GetType("UAssetAPI.FieldTypes.F" + allNonLetters.Replace(serializedType.Value.Value, string.Empty));
-            if (requestedType == null) requestedType = typeof(FGenericProperty);
+            Type requestedType = Type.GetType("UAssetAPI.FieldTypes.F" + serializedType.ToString());
+            if (requestedType == null)
+            {
+                if (!UsesGenericFieldLayout(serializedType.ToString()))
+                    reader.Asset.Coverage.Report("uninspected-field-type", $"{serializedType}: its descriptor layout is not classified; inspection uses only the generic FProperty reader.");
+                requestedType = typeof(FGenericProperty);
+            }
             var res = (FProperty)Activator.CreateInstance(requestedType);
             res.SerializedType = serializedType;
             res.Read(reader);
@@ -617,7 +637,9 @@ namespace UAssetAPI
 #endif
         public static UProperty ReadUProperty(AssetBinaryReader reader, FName serializedType)
         {
-            return ReadUProperty(reader, Type.GetType("UAssetAPI.FieldTypes.U" + allNonLetters.Replace(serializedType.Value.Value, string.Empty)));
+            if (UsesGenericFieldLayout(serializedType.ToString(), legacy: true))
+                return ReadUProperty(reader, typeof(UGenericProperty));
+            return ReadUProperty(reader, Type.GetType("UAssetAPI.FieldTypes.U" + serializedType.ToString()));
         }
 
         /// <summary>
@@ -628,7 +650,11 @@ namespace UAssetAPI
         /// <returns>The FProperty read from disk.</returns>
         public static UProperty ReadUProperty(AssetBinaryReader reader, [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicParameterlessConstructor)] Type requestedType)
         {
-            if (requestedType == null) requestedType = typeof(UGenericProperty);
+            if (requestedType == null)
+            {
+                reader.Asset.Coverage.Report("uninspected-field-type", "No concrete legacy UProperty reader was found; only generic UProperty fields are inspected.");
+                requestedType = typeof(UGenericProperty);
+            }
             var res = (UProperty)Activator.CreateInstance(requestedType);
             res.Read(reader);
             return res;

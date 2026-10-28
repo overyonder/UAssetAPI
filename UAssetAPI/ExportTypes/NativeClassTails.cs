@@ -11,6 +11,15 @@ using UAssetAPI.UnrealTypes;
 
 namespace UAssetAPI.ExportTypes;
 
+[Flags]
+internal enum NativeSerializationKind : byte
+{
+    None = 0,
+    Serialize = 1,
+    SerializeDefaultObject = 2,
+    DefaultInspectionUnavailable = 4,
+}
+
 /// <summary>Native serializers that add data after an actor's or component's tagged properties.</summary>
 [Flags]
 public enum NativeClassTail : long
@@ -355,16 +364,82 @@ public class FSimpleMemberReferenceData
 
 public static class NativeClassTails
 {
-    /// <summary>Report a known native serializer even when its version branches produce no tail bytes.</summary>
+    static readonly Dictionary<(string Module, string Class), NativeSerializationKind> ProjectSerialization = new();
+
+    /// <summary>Register source-derived serialization capabilities for a project or external plugin class.</summary>
+    public static void RegisterProjectSerialization(string module, string className, bool serialize, bool serializeDefaultObject, bool defaultInspected = true)
+    {
+        ProjectSerialization[(module, className)] = (serialize ? NativeSerializationKind.Serialize : 0)
+            | (serializeDefaultObject ? NativeSerializationKind.SerializeDefaultObject : 0)
+            | (defaultInspected ? 0 : NativeSerializationKind.DefaultInspectionUnavailable);
+    }
+
+    static NativeSerializationKind? SourceSerializationOf(UAsset asset, (string Module, string Class) native)
+    {
+        HashSet<(string Module, string Class)> visited = null;
+        while (true)
+        {
+            if (ProjectSerialization.TryGetValue(native, out var project)) return project;
+            if (NativeSerializationTypes.Classes.TryGetValue(native, out var engine)) return engine;
+            if ((native.Module != null && NativeClassTailTable.ClassRedirects.TryGetValue(native.Module + "." + native.Class, out var moved))
+                || NativeClassTailTable.ClassRedirects.TryGetValue(native.Class, out moved))
+            {
+                visited ??= new();
+                if (!visited.Add(native))
+                {
+                    asset.Coverage.Report("class-redirect-cycle", $"{native.Module}.{native.Class}: native serializer classification stopped at a repeated class redirect.");
+                    return null;
+                }
+                native = moved;
+            }
+            else return null;
+        }
+    }
+
+    /// <summary>Report source-declared serializers even when their version branches produce no bytes.</summary>
     internal static void ReportSerializationEncounter(UAsset asset, Export export)
     {
-        if (export.ObjectFlags.HasFlag(EObjectFlags.RF_ClassDefaultObject)) return;
+        if (export.ObjectFlags.HasFlag(EObjectFlags.RF_ClassDefaultObject))
+        {
+            (string Module, string Class)? kind = null;
+            if (export.ClassIndex?.IsExport() == true)
+                kind = NativeBaseOf(asset, export.ClassIndex.ToExport(asset).ClassIndex);
+            else if (export.ClassIndex?.IsImport() == true)
+            {
+                var cls = export.ClassIndex.ToImport(asset);
+                kind = (cls.ClassPackage?.ToString(), cls.ClassName?.ToString());
+            }
+            var capabilities = kind.HasValue ? SourceSerializationOf(asset, kind.Value) : null;
+            if (!capabilities.HasValue || capabilities.Value.HasFlag(NativeSerializationKind.DefaultInspectionUnavailable))
+                asset.Coverage.Report("uninspected-default-serialization", $"{export.ObjectName}: default-object serializer inspection is unavailable for class-object type {kind?.Module}.{kind?.Class}; only the supported default-object fields are decoded.");
+            else if (capabilities.Value.HasFlag(NativeSerializationKind.SerializeDefaultObject))
+                asset.Coverage.Report("custom-serialization", $"{export.ObjectName}: encountered the custom SerializeDefaultObject implementation of {kind?.Module}.{kind?.Class}, including branches with no native bytes.");
+            return;
+        }
         var native = NativeBaseOf(asset, export.ClassIndex);
-        if (native == null || TableKeyOf(asset, native.Value) is not { } key) return;
+        if (native == null)
+        {
+            asset.Coverage.Report("uninspected-native-serialization", $"{export.ObjectName}: native serializer inspection stopped because the native class could not be resolved.");
+            return;
+        }
+        var source = SourceSerializationOf(asset, native.Value);
+        if (source.HasValue)
+        {
+            if (source.Value.HasFlag(NativeSerializationKind.Serialize))
+                asset.Coverage.Report("custom-serialization", $"{export.ObjectName}: encountered source-declared native Serialize for {native.Value.Module}.{native.Value.Class}, including inherited serializers and branches with no native bytes.");
+            return;
+        }
+        if (TableKeyOf(asset, native.Value) is not { } key)
+        {
+            asset.Coverage.Report("uninspected-native-serialization", $"{export.ObjectName}: {native.Value.Module}.{native.Value.Class} has no source serialization classification or supported native serializer; native inspection is skipped while its reflected properties are decoded.");
+            return;
+        }
         var tails = NativeClassTailTable.Tails[key];
         NativeClassTailTable.Chains.TryGetValue(key, out var chain);
         if (tails != NativeClassTail.None || chain?.Length > 0)
             asset.Coverage.Report("custom-serialization", $"{export.ObjectName}: encountered native class serialization ({Describe(tails, chain)}), including branches with no tail bytes.");
+        else
+            asset.Coverage.Report("uninspected-native-serialization", $"{export.ObjectName}: native class {native.Value.Module}.{native.Value.Class} has no source serialization classification; only its known ancestor layout is inspected.");
     }
 
     static readonly Guid FortniteReleaseGuid = UAPUtils.GUID(0xE7086368, 0x6B234C58, 0x84391B70, 0x16265E91);

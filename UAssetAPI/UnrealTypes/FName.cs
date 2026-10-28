@@ -155,6 +155,12 @@ namespace UAssetAPI.UnrealTypes
                 package.Coverage.Report("ambiguous-name-output", $"The literal name {literal} has number zero, but its JSON string is also the representation of a numbered FName; the output does not retain that distinction.");
         }
 
+        internal static void ReportTypeNormalization(UAsset asset, FName type, string role)
+        {
+            if (type == null || type.Number == 0 || type.IsDummy && type.Number == int.MinValue) return;
+            asset?.Coverage.Report("normalized-type", $"{role}: {type} is interpreted as {type.Value?.Value}, ignoring its numeric name suffix.");
+        }
+
         public static bool IsFromStringValid(INameMap asset, string val)
         {
             if (val == null || val == FString.NullCase) return true;

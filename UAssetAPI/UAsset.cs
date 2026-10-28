@@ -1115,6 +1115,13 @@ namespace UAssetAPI
 
         public void ConvertExportToChildExportAndRead(AssetBinaryReader reader, int i, bool read = true)
         {
+            ReadExportBody(reader, i, read);
+            if (read && Exports[i].alreadySerialized && Exports[i].GetType() == typeof(NormalExport))
+                NativeClassTails.ReportSerializationEncounter(this, Exports[i]);
+        }
+
+        private void ReadExportBody(AssetBinaryReader reader, int i, bool read = true)
+        {
 #pragma warning disable CS0168 // Variable is declared but never used
             string exportClassType = null;
             try
@@ -1134,6 +1141,7 @@ namespace UAssetAPI
                 }
 
                 FName exportClassTypeName = Exports[i].GetExportClassType();
+                FName.ReportTypeNormalization(this, exportClassTypeName, $"{Exports[i].ObjectName}: export class");
                 exportClassType = exportClassTypeName.Value.Value;
                 if (read && nextStarting != Exports[i].SerialOffset + Exports[i].SerialSize)
                     Coverage.Report("export-range-mismatch", $"{Exports[i].ObjectName}: export table declares [{Exports[i].SerialOffset}, {Exports[i].SerialOffset + Exports[i].SerialSize}), but decoding uses end offset {nextStarting}.");
@@ -1203,7 +1211,6 @@ namespace UAssetAPI
                 {
                     if (Exports[i].GetType() != typeof(NormalExport))
                         Coverage.Report("custom-serialization", $"{Exports[i].ObjectName}: encountered the custom binary export serializer {Exports[i].GetType().Name} for {exportClassType}.");
-                    else NativeClassTails.ReportSerializationEncounter(this, Exports[i]);
                     Exports[i].Read(reader, (int)nextStarting);
                 }
 
@@ -2651,7 +2658,7 @@ namespace UAssetAPI
                             continue;
                         }
 
-                        ConvertExportToChildExportAndRead(reader, i);
+                        ReadExportBody(reader, i);
                     }
 
                     // catch any stragglers
@@ -2668,7 +2675,7 @@ namespace UAssetAPI
                             continue;
                         }
 
-                        ConvertExportToChildExportAndRead(reader, i);
+                        ReadExportBody(reader, i);
                     }
 
                     // an instance can load before the class export it names; its native base is only resolvable now
@@ -2690,7 +2697,7 @@ namespace UAssetAPI
                         continue;
                     }
 
-                    ConvertExportToChildExportAndRead(reader, i, false);
+                    ReadExportBody(reader, i, false);
                 }
             }
 
@@ -2736,6 +2743,10 @@ namespace UAssetAPI
             if (reader.LoadUexp)
                 foreach (var export in Exports)
                 {
+                    // Class exports can follow their instances; classify only after native retries
+                    // and parent resolution have had access to every decoded export.
+                    if (export.alreadySerialized && export.GetType() == typeof(NormalExport))
+                        NativeClassTails.ReportSerializationEncounter(this, export);
                     if (!export.alreadySerialized && export.SerialSize > 0 && export is not RawExport)
                         Coverage.Report("unparsed-export", $"{export.ObjectName}: {export.SerialSize} declared export bytes were not passed through an export decoder.");
                     if (export is RawExport && export is not RigHierarchyExport { FullyParsed: true } && export is not RigVMExport { FullyParsed: true })

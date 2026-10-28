@@ -116,6 +116,7 @@ public class ArrayPropertyData : PropertyData<PropertyData[]>
             throw new InvalidOperationException("Unable to determine array type for array " + Name.Value.Value + " in class " + Ancestry.Parent.Value.Value);
         }
 
+        FName.ReportTypeNormalization(reader.Asset, ArrayType, $"{Name}: array element type");
         int numEntries = reader.ReadInt32();
         if (numEntries > (reader.BaseStream.Length - reader.BaseStream.Position)) throw new InvalidOperationException("Invalid number of entries (" + numEntries + ") for array " + Name.Value.Value + " in class " + Ancestry.Parent.Value.Value);
         if (ArrayType.Value.Value == "StructProperty" && ShouldSerializeStructsDifferently && !reader.Asset.HasUnversionedProperties)

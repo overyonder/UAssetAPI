@@ -905,10 +905,10 @@ namespace UAssetAPI.Unversioned
         {
             List<UsmapProperty> res = new List<UsmapProperty>();
             UsmapSchema relevantSchema = this.GetSchemaFromName(schemaName, asset, modulePath);
-            int superSteps = 0; // a class can't be its own ancestor; a loop here is corrupt or mixed mappings
+            var visitedSchemas = new HashSet<UsmapSchema>();
             while (schemaName != null && relevantSchema != null)
             {
-                if (++superSteps > 512) throw new FormatException("Schema super chain loops at " + schemaName);
+                CheckSchemaCycle(relevantSchema, visitedSchemas, asset);
                 res.AddRange(relevantSchema.Properties.Values);
                 relevantSchema = this.GetSchemaFromName(relevantSchema.SuperType, asset, relevantSchema.SuperTypeModulePath, false);
             }
@@ -933,10 +933,10 @@ namespace UAssetAPI.Unversioned
             List<string> res = new List<string>();
             bool hasDoneFirst = false;
             UsmapSchema relevantSchema = this.GetSchemaFromName(schemaName, asset);
-            int superSteps = 0; // a class can't be its own ancestor; a loop here is corrupt or mixed mappings
+            var visitedSchemas = new HashSet<UsmapSchema>();
             while (schemaName != null && relevantSchema != null)
             {
-                if (++superSteps > 512) throw new FormatException("Schema super chain loops at " + schemaName);
+                CheckSchemaCycle(relevantSchema, visitedSchemas, asset);
                 string schemaAnnotation = relevantSchema.FromAsset ? " (blueprint)" : string.Empty;
                 res.Add(headerPrefix + schemaName + schemaAnnotation + headerSuffix);
 
@@ -1038,10 +1038,10 @@ namespace UAssetAPI.Unversioned
             idx = 0;
             var schemaName = ancestry.Parent.ToString();
             UsmapSchema relevantSchema = this.GetSchemaFromName(schemaName, asset);
-            int superSteps = 0; // a class can't be its own ancestor; a loop here is corrupt or mixed mappings
+            var visitedSchemas = new HashSet<UsmapSchema>();
             while (schemaName != null && relevantSchema != null)
             {
-                if (++superSteps > 512) throw new FormatException("Schema super chain loops at " + schemaName);
+                CheckSchemaCycle(relevantSchema, visitedSchemas, asset);
                 propDat = relevantSchema.GetProperty(propertyName.ToString(), dupIndex) as T;
                 if (propDat != null)
                 {
@@ -1071,6 +1071,8 @@ namespace UAssetAPI.Unversioned
             propDat = null;
 
             if (propertyName == null) return false;
+            FName.ReportTypeNormalization(asset, propertyName, "Schema property lookup");
+            FName.ReportTypeNormalization(asset, ancestry.Parent, "Schema ancestry lookup");
 
             if (propertyName.IsDummy && int.TryParse(propertyName.Value.Value, out _))
             {
@@ -1084,10 +1086,10 @@ namespace UAssetAPI.Unversioned
 
             var schemaName = ancestry.Parent?.Value?.Value;
             UsmapSchema relevantSchema = this.GetSchemaFromName(schemaName, asset, null, false);
-            int superSteps = 0; // a class can't be its own ancestor; a loop here is corrupt or mixed mappings
+            var visitedSchemas = new HashSet<UsmapSchema>();
             while (schemaName != null && relevantSchema != null)
             {
-                if (++superSteps > 512) throw new FormatException("Schema super chain loops at " + schemaName);
+                CheckSchemaCycle(relevantSchema, visitedSchemas, asset);
                 propDat = relevantSchema.GetProperty(propertyName.Value.Value, 0)?.PropertyData as T;
                 if (propDat != null) return true;
                 schemaName = relevantSchema.SuperType;
@@ -1095,6 +1097,13 @@ namespace UAssetAPI.Unversioned
             }
 
             return false;
+        }
+
+        static void CheckSchemaCycle(UsmapSchema schema, HashSet<UsmapSchema> visited, UAsset asset)
+        {
+            if (visited.Add(schema)) return;
+            asset?.Coverage.Report("schema-cycle", $"Schema ancestry inspection stopped at repeated schema {schema.Name}.");
+            throw new FormatException("Schema super chain loops at " + schema.Name);
         }
 
         /// <summary>
@@ -1431,6 +1440,7 @@ namespace UAssetAPI.Unversioned
 
         private static bool RefillBuffer(ref Utf8JsonReader reader, ref byte[] buffer, Stream fs, ref long bytesNotInBuffer)
         {
+            if (reader.IsFinalBlock) return false;
             JsonReaderState state = reader.CurrentState;
             long bytesConsumed = reader.BytesConsumed;
             long numberOfBytesToPreserve = buffer.LongLength - bytesConsumed;
@@ -1451,8 +1461,6 @@ namespace UAssetAPI.Unversioned
             }
 
             int bytesRead = fs.Read(buffer, (int)numberOfBytesToPreserve, (int)numberOfBytesToRead);
-            if (bytesRead == 0) return false;
-
             reader = new Utf8JsonReader(buffer.AsSpan(0, (int)(numberOfBytesToPreserve + bytesRead)), bytesRead < numberOfBytesToRead, state);
             return true;
         }
