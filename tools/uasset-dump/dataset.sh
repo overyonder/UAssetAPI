@@ -28,13 +28,18 @@ batch() {
 export -f batch
 systemd-run --user --quiet --scope --collect -p MemoryMax=4G -p CPUQuota=200% nice -n 19 bash -c '
   ls "$out"/batches/b.[0-9][0-9][0-9][0-9][0-9] | xargs -P 2 -I{} bash -c "batch {} 0x70000000"
-  cat "$out"/batches/b.[0-9]*.out | awk -F"\t" "\$1==\"fail\" && \$2 ~ /OutOfMemory/ {print \$NF}" > "$out/batches/retry"
+  cat "$out"/batches/b.[0-9]*.out | awk -F"\t" "(\$1==\"fail\" && \$2 ~ /OutOfMemory/) || (\$1==\"rawstruct\" && \$4 ~ /OutOfMemoryException/) {print \$NF}" | sort -u > "$out/batches/retry"
   if [ -s "$out/batches/retry" ]; then split -l 50 -d -a 3 "$out/batches/retry" "$out/batches/r."; for b in "$out"/batches/r.[0-9][0-9][0-9]; do batch "$b" 0xC0000000; done; fi'
 # a retried package's out-of-memory fail line gives way to its retry's lines
 cat "$out"/batches/r.[0-9]*.out 2>/dev/null > "$out/batches/retried.out"
-awk -F'\t' -v retried="$out/batches/retried.out" 'FILENAME==retried { if ($1=="index") done[$2]=1; next } !($1=="fail" && ($NF in done))' \
+awk -F'\t' -v retried="$out/batches/retried.out" 'FILENAME==retried { if ($1=="index") done[$2]=1; next } !(($1=="index" && ($2 in done)) || ($NF in done))' \
   "$out/batches/retried.out" "$out"/batches/b.[0-9]*.out > "$out/batches/all.out"
 cat "$out/batches/retried.out" >> "$out/batches/all.out"
+"$dotnet" "$tool/uasset-dump.dll" --merge-diagnostics --records "$out/batches/all.out" > "$out/batches/merged.out" 2> "$out/batches/merge.err" || {
+  cat "$out/batches/merge.err" >&2
+  exit 1
+}
+mv "$out/batches/merged.out" "$out/batches/all.out"
 grep '^index' "$out/batches/all.out" | cut -f2- > "$out/index.tsv"
 grep -v '^index' "$out/batches/all.out" > "$out/residue.tsv"
 "$dotnet" "$tool/uasset-dump.dll" --coverage-summary "$out/index.tsv" "$out" "$list"

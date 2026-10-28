@@ -6,6 +6,7 @@ tool=$1 list=$2 out=$3
 M=~/code/scratch/uasset-dump/mappings
 export UASSET_ENGINE=~/.local/opt/unreal-engine/5.8.3/Engine UASSET_OODLE=~/.local/opt/unreal-engine/5.8.3/Engine/Binaries/DotNET/AutomationTool/AutomationScripts/BuildGraph/net10.0/runtimes/linux-x64/native/liboo2core.so
 export UASSET_PARENTS=$M/project-parents.tsv UASSET_USMAP=$(ls $M/*.usmap | paste -sd:)
+export UASSET_MAPS=$M/project-maps.tsv:$M/removed-maps.tsv UASSET_MOUNTS=$M/project-plugins.lst
 mkdir -p "$out"
 [ -e "$out/batch.0000" ] || split -l 50 -d -a 4 "$list" "$out/batch."
 for b in "$out"/batch.[0-9][0-9][0-9][0-9]; do

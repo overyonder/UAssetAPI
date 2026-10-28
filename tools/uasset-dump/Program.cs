@@ -22,9 +22,19 @@ try
 // Warning counts come from worker headers, which include formatter findings as well as audit records.
 if (args.Length > 0 && args[0] == "--merge-diagnostics")
 {
-    foreach (string source in args.Skip(1))
+    bool fromRecords = args.Length > 1 && args[1] == "--records";
+    foreach (string source in args.Skip(fromRecords ? 2 : 1))
         foreach (string line in File.ReadLines(source))
         {
+            if (fromRecords)
+            {
+                if (line.StartsWith('#')) continue;
+                int separator = line.IndexOf('\t');
+                if (separator > 0 && line[..separator] is not ("index" or "done"))
+                    coverageSummary.Warnings.WriteLine(line);
+                Console.WriteLine(line);
+                continue;
+            }
             if (line == "# WARNING: " + CoverageWarnings.Notice) continue;
             if (line.StartsWith("# ", StringComparison.Ordinal))
             {
