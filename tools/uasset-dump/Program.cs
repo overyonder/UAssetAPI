@@ -14,7 +14,7 @@ using var coverageSummary = new CoverageWarningSummary();
 using var diagnosticOutput = new CoverageDiagnosticOutput(coverageSummary.Warnings,
     args.Length > 0 && args[0] is "--trace" or "--failures" or "--classes" or "--scriptspan"
         or "--versions" or "--cdos" or "--having" or "--usage" or "--names" or "--extras"
-        or "--exports" or "--sections" or "--check" or "--audit" or "--dataset" or "--annotate-index");
+        or "--exports" or "--sections" or "--check" or "--audit" or "--audit-iostore-index" or "--dataset" or "--annotate-index");
 try
 {
 
@@ -45,6 +45,16 @@ if (Environment.GetEnvironmentVariable("UASSET_MOUNTS") is { Length: > 0 } mount
     }
 if (Environment.GetEnvironmentVariable("UASSET_PARENTS") is { Length: > 0 } parents)
     foreach (var line in File.ReadLines(parents)) { var f = line.Split('\t'); if (f.Length == 2) NativeClassTails.ProjectNativeParents.TryAdd(f[0], f[1]); }
+string serializerCatalog = Environment.GetEnvironmentVariable("UASSET_SERIALIZERS")
+    ?? Path.Combine(AppContext.BaseDirectory, "project-serializers.tsv");
+if (File.Exists(serializerCatalog))
+    foreach (string line in File.ReadLines(serializerCatalog))
+    {
+        var fields = line.Split('\t');
+        if (fields.Length != 3 || !byte.TryParse(fields[2], out byte flags) || (flags & ~7) != 0)
+            throw new InvalidDataException("Invalid native serialization catalog entry: " + line);
+        NativeClassTails.RegisterProjectSerialization(fields[0], fields[1], (flags & 1) != 0, (flags & 2) != 0, (flags & 4) == 0);
+    }
 // UASSET_MAPS names TSVs, separated by ':', of owning type, property name, key struct and value struct for map
 // properties no mappings describe: project-maps.tsv from the project headers, and removed-maps.tsv for engine
 // properties a later release removed, whose types the property tag and the data that follows establish
@@ -142,6 +152,32 @@ if (args[0] == "--classes")
 
 // --audit <package>...: one line per undecoded part: raw export, export with leftover Extras bytes, or a property
 // UAssetAPI could not type. Columns: kind, class (export class or property type), bytes, export name, package.
+// UnrealPak -ListContainer writes this CSV directly from its IoStore directory and chunk index.
+// This API has no IoStore reader: account for those required inputs explicitly instead of excluding the containers.
+if (args[0] == "--audit-iostore-index")
+{
+    using var parser = new Microsoft.VisualBasic.FileIO.TextFieldParser(args[1])
+    {
+        TextFieldType = Microsoft.VisualBasic.FileIO.FieldType.Delimited,
+        HasFieldsEnclosedInQuotes = true,
+        TrimWhiteSpace = true,
+    };
+    parser.SetDelimiters(",");
+    string[] headers = parser.ReadFields() ?? throw new InvalidDataException("Missing IoStore index header");
+    int chunkId = Array.IndexOf(headers, "ChunkId"), chunkType = Array.IndexOf(headers, "ChunkType"),
+        filename = Array.IndexOf(headers, "Filename"), size = Array.IndexOf(headers, "Size");
+    if (chunkId < 0 || chunkType < 0 || filename < 0 || size < 0)
+        throw new InvalidDataException("IoStore index lacks a required column");
+    var warnings = new CoverageWarnings(Console.Out, coverageSummary.Warnings);
+    while (!parser.EndOfData)
+    {
+        string[] fields = parser.ReadFields();
+        if (fields == null || fields.Length != headers.Length || !long.TryParse(fields[size], out long length) || length < 0)
+            throw new InvalidDataException("Invalid IoStore index row");
+        warnings.WriteLine($"unsupported-input\t{fields[chunkType]}\t{length}\t{fields[chunkId]} {fields[filename]}: IoStore chunk not decoded; this API reads conventional package files\t{args[2]}");
+    }
+    return;
+}
 if (args[0] == "--audit")
 {
     foreach (var path in args.Skip(1))
@@ -243,7 +279,7 @@ if (args[0] == "--annotate-index")
                     lock (parseGate)
                     {
                         asset = Load(fields[0], EngineVersion.UNKNOWN, mappings, CustomSerializationFlags.ReadOnlyStreaming);
-                        warnings = InspectCoverage(asset, fields[0], firstFinding: true);
+                        warnings = InspectCoverage(asset, fields[0]);
                         if (!warnings.Any)
                         {
                             if (outputs.Any(path => path.EndsWith(".txt", StringComparison.Ordinal))) TextDump.Write(asset, TextWriter.Null, textWarnings);
@@ -407,10 +443,10 @@ void WriteJson(UAsset asset, string path, CoverageWarnings warnings)
     }, json: true);
 }
 
-CoverageWarnings InspectCoverage(UAsset asset, string path, TextWriter records = null, bool firstFinding = false)
+CoverageWarnings InspectCoverage(UAsset asset, string path, TextWriter records = null)
 {
     var warnings = new CoverageWarnings(records, coverageSummary.Warnings);
-    new CoverageInspector(path, warnings, firstFinding).Inspect(asset);
+    new CoverageInspector(path, warnings).Inspect(asset);
     return warnings;
 }
 

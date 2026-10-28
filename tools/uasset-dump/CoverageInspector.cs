@@ -12,18 +12,16 @@ using UAssetAPI.UnrealTypes;
 
 // Walk the serializer's actual contract, including native fields, sparse data, rigs and bytecode.
 // Limits constrain inspection, not output; hitting one is itself an explicit coverage diagnostic.
-sealed class CoverageInspector(string package, TextWriter records, bool firstFinding = false)
+sealed class CoverageInspector(string package, TextWriter records)
 {
     const int MaximumDepth = 12;
     internal const int MaximumCollectionItems = 4097;
     readonly IContractResolver resolver = UAsset.CreateReadableJsonSerializer().ContractResolver;
     readonly HashSet<object> ancestors = new(ReferenceEqualityComparer.Instance);
-    bool found;
 
     void Report(string kind, string path, string detail, long bytes = 0)
     {
         records.WriteLine($"{kind}\t-\t{bytes}\t{path}: {detail.Replace('\n', ' ').Replace('\r', ' ')}\t{package}");
-        found = true;
     }
 
     public void Inspect(UAsset asset)
@@ -31,13 +29,11 @@ sealed class CoverageInspector(string package, TextWriter records, bool firstFin
         foreach (var diagnostic in asset.Coverage.Diagnostics)
         {
             Report(diagnostic.Kind, package, $"occurrences: {diagnostic.Count}; example: {diagnostic.Detail}");
-            if (firstFinding) return;
         }
         // Package-level fields are inspected too: thumbnails, bulk/trailer buffers and data-resource references.
         InspectMembers(asset, "Package", 0, skipExports: true);
         foreach (var export in asset.Exports)
         {
-            if (firstFinding && found) break;
             if (export.Extras?.Length > 0 && export.NativeTailFailure != null)
                 Report("native-parse-failed", export.ObjectName?.ToString() ?? "Export", export.NativeTailFailure, export.Extras.LongLength);
             Visit(export, export.ObjectName?.ToString() ?? "Export", 0);
@@ -46,7 +42,6 @@ sealed class CoverageInspector(string package, TextWriter records, bool firstFin
 
     void Visit(object value, string path, int depth)
     {
-        if (firstFinding && found) return;
         if (value == null) return;
         if (value is float f && float.IsNaN(f) || value is double d && double.IsNaN(d))
             Report("numeric-output-loss", path, "JSON represents this NaN as a string without its IEEE sign, signalling bit or payload bits");
@@ -117,7 +112,6 @@ sealed class CoverageInspector(string package, TextWriter records, bool firstFin
         }
         foreach (var property in contract.Properties)
         {
-            if (firstFinding && found) break;
             if (property.Ignored || !property.Readable || (skipExports && property.PropertyName == "Exports")) continue;
             // Fully parsed rigs retain their original bytes for write-back; they are not another undecoded payload.
             if (property.PropertyName == "Data" && (value is RigHierarchyExport { FullyParsed: true } || value is RigVMExport { FullyParsed: true })) continue;
