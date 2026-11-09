@@ -1,6 +1,0 @@
-#!/usr/bin/env bash
-# one capped uasset-dump process: 4 GB, two cores, low priority
-here=$(dirname "$(readlink -f "$0")")
-usmaps=${UASSET_USMAP_DIR:-/mnt/bulk/games/asset-packs/unreal/sample-projects/asset-dump/mappings}
-export UASSET_ENGINE=~/.local/opt/unreal-engine/5.8.3/Engine UASSET_OODLE=~/.local/opt/unreal-engine/5.8.3/Engine/Binaries/DotNET/AutomationTool/AutomationScripts/BuildGraph/net10.0/runtimes/linux-x64/native/liboo2core.so UASSET_PARENTS=$here/mappings/project-parents.tsv UASSET_USMAP=$(ls "$usmaps"/*.usmap | paste -sd:) DOTNET_GCHeapHardLimit=0xC0000000
-exec systemd-run --user --quiet --scope --collect -p MemoryMax=4G -p CPUQuota=200% nice -n 19 /nix/store/pkng7qyg6mxf77lrqlaal9s6igy35n4x-dotnet-sdk-wrapped-10.0.401/bin/dotnet "$here/out/uasset-dump.dll" "$@"

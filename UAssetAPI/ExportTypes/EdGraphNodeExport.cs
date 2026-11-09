@@ -28,7 +28,7 @@ public class EdGraphNodeExport : NormalExport
     public Guid? DataflowNodeGuid;
 
     /// <summary>
-    /// The node's tail, from the class table generated from engine source (tools/generate-edgraph-node-classes.sh),
+    /// The node's tail, from the class table generated from engine source,
     /// or null when the export's class isn't a known native UEdGraphNode class.
     /// </summary>
     internal static EdGraphNodeTail? TailOf(Export export)
