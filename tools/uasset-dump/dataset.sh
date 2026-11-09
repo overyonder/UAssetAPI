@@ -12,8 +12,8 @@ if [ ! -f "$list" ] || [ ! -r "$list" ]; then
 fi
 M=$(dirname "$(readlink -f "$0")")/mappings
 usmaps=${UASSET_USMAP_DIR:-/mnt/bulk/games/asset-packs/unreal/sample-projects/asset-dump/mappings}
-export UASSET_ENGINE=~/.local/opt/unreal-engine/5.8.3/Engine
-export UASSET_OODLE=$UASSET_ENGINE/Binaries/DotNET/AutomationTool/AutomationScripts/BuildGraph/net10.0/runtimes/linux-x64/native/liboo2core.so
+export UASSET_ENGINE=~/code/github.com/EpicGames/UnrealEngine/Engine
+export UASSET_OODLE=$UASSET_ENGINE/Binaries/DotNET/UnrealBuildTool/runtimes/linux-x64/native/liboo2core.so
 export UASSET_PARENTS=$M/project-parents.tsv UASSET_MAPS=$M/project-maps.tsv:$M/removed-maps.tsv UASSET_MOUNTS=$M/project-plugins.lst
 export UASSET_USMAP=$(ls "$usmaps"/*.usmap | paste -sd:)
 export tool root out dotnet=/nix/store/pkng7qyg6mxf77lrqlaal9s6igy35n4x-dotnet-sdk-wrapped-10.0.401/bin/dotnet
