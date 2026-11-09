@@ -36,7 +36,7 @@ for line in open(f'{S}/project-serialize.tsv'):
     c, kind, path = line.rstrip('\n').split('\t')
     serializes[c].add(kind); where.setdefault(c, path)
 proj_parent = {}
-for line in open(os.path.expanduser('~/code/scratch/uasset-dump/mappings/project-parents.tsv')):
+for line in open(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'mappings', 'project-parents.tsv')):
     f = line.rstrip('\n').split('\t')
     if len(f) == 2: proj_parent[f[0]] = f[1]
 

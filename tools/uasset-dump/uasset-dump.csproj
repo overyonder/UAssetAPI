@@ -6,6 +6,6 @@
     <AssemblyName>uasset-dump</AssemblyName>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="../../github.com/overyonder/UAssetAPI/UAssetAPI/UAssetAPI.csproj" />
+    <ProjectReference Include="../../UAssetAPI/UAssetAPI.csproj" />
   </ItemGroup>
 </Project>

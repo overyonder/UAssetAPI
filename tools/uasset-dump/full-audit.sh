@@ -3,9 +3,10 @@
 # per batch; a batch that finished is skipped on a rerun, so an interrupted audit resumes
 set -u
 tool=$1 list=$2 out=$3
-M=~/code/scratch/uasset-dump/mappings
+M=$(dirname "$(readlink -f "$0")")/mappings
+usmaps=${UASSET_USMAP_DIR:-/mnt/bulk/games/asset-packs/unreal/sample-projects/asset-dump/mappings}
 export UASSET_ENGINE=~/.local/opt/unreal-engine/5.8.3/Engine UASSET_OODLE=~/.local/opt/unreal-engine/5.8.3/Engine/Binaries/DotNET/AutomationTool/AutomationScripts/BuildGraph/net10.0/runtimes/linux-x64/native/liboo2core.so
-export UASSET_PARENTS=$M/project-parents.tsv UASSET_USMAP=$(ls $M/*.usmap | paste -sd:)
+export UASSET_PARENTS=$M/project-parents.tsv UASSET_USMAP=$(ls "$usmaps"/*.usmap | paste -sd:)
 export UASSET_MAPS=$M/project-maps.tsv:$M/removed-maps.tsv UASSET_MOUNTS=$M/project-plugins.lst
 mkdir -p "$out"
 [ -e "$out/batch.0000" ] || split -l 50 -d -a 4 "$list" "$out/batch."
