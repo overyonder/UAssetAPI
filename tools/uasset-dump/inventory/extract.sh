@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # extract.sh <signature regex> <out>: every function body whose signature line matches, from the engine source
-cd ~/.local/opt/unreal-engine/5.8.3/Engine
+cd ~/code/github.com/EpicGames/UnrealEngine/Engine
 rg --no-config -P -U --multiline-dotall --json -g '*.cpp' -g '*.h' -g '*.inl' "(?m)^[^\n;#/]*(?:$1)[^\n{;]*(?:\n[^\n{;]*){0,2}?\s*(\{(?:[^{}]++|(?1))*\})" Source Plugins 2>/dev/null |
 python3 -c '
 import json,sys
