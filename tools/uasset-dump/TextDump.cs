@@ -97,6 +97,8 @@ sealed class TextDump(CoverageWarnings warnings)
     void Prop(UAsset a, PropertyData p, TextWriter o, string ind)
     {
         var name = NameText(p.Name) + (p.ArrayIndex > 0 ? $"[{p.ArrayIndex}]" : "");
+        if (MaterialInputLink(a, p) is { } link) { o.WriteLine($"{ind}{name} = {link}"); return; }
+        if (p is StructPropertyData one && one.Value?.Count == 1 && MaterialInputLink(a, one.Value[0]) is { } inner1) { o.WriteLine($"{ind}{name} = {inner1}"); return; }
         switch (p)
         {
             case InstancedStructPropertyData ins:
@@ -146,8 +148,31 @@ sealed class TextDump(CoverageWarnings warnings)
         }
     }
 
+    // FExpressionInput and FMaterialInput: the connected expression and output, the component mask, and any constant
+    string MaterialInputLink(UAsset a, PropertyData p)
+    {
+        var t = p.GetType();
+        while (t != null && !(t.IsGenericType && t.GetGenericTypeDefinition() == typeof(MaterialInputPropertyData<>))) t = t.BaseType;
+        if (t == null) return null;
+        var expr = (FPackageIndex)t.GetField("Expression").GetValue(p);
+        int outIdx = (int)t.GetField("OutputIndex").GetValue(p);
+        var inName = (FName)t.GetField("InputName").GetValue(p);
+        int mask = (int)t.GetField("Mask").GetValue(p);
+        string m = mask == 0 ? "" : "." + string.Concat(new[] { ("R", "MaskR"), ("G", "MaskG"), ("B", "MaskB"), ("A", "MaskA") }.Where(c => (int)t.GetField(c.Item2).GetValue(p) != 0).Select(c => c.Item1));
+        var sb = new StringBuilder(expr == null || expr.Index == 0 ? "unlinked" : $"-> {Ref(a, expr)} out {outIdx}{m}");
+        if (inName?.Value?.Value is { Length: > 0 } nm && nm != "None") sb.Append($" (input name {nm})");
+        var use = (bool?)t.GetField("UseConstant").GetValue(p);
+        if (use != null)
+        {
+            var v = t.GetProperty("Value").GetValue(p);
+            sb.Append($"; constant {(v is PropertyData vp ? Val(a, vp) : Convert.ToString(v, System.Globalization.CultureInfo.InvariantCulture))}{(use == true ? " (used)" : "")}");
+        }
+        return sb.ToString();
+    }
+
     string Val(UAsset a, PropertyData p)
     {
+        if (MaterialInputLink(a, p) is { } link) return link;
         switch (p)
         {
             case ObjectPropertyData op: return Ref(a, op.Value);
